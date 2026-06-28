@@ -18,6 +18,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ .Values.config | toPrettyJson | sha256sum }}
+        {{- if and .Values.pulsarAuth.enabled .Values.pulsarAuth.create }}
+        checksum/pulsar-auth: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -95,4 +98,3 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-

@@ -52,4 +52,4 @@ image:
   tag: ""
 ```
 
-When `tag` is empty, Helm uses the chart `appVersion`, currently `0.1.0`.
+When `tag` is empty, Helm uses the chart `appVersion`.

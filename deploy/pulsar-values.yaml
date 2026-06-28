@@ -7,9 +7,12 @@ image:
 
 pulsarAuth:
   enabled: true
+  create: true
   secretName: pulsar-auth-secret-key
   secretKey: adminToken
   mountPath: /app/secrets/pulsar
+  token: ""
+  tokenBase64: ""
 
 config:
   server:
@@ -27,4 +30,3 @@ config:
   routes:
     mss_tag_push_event_test:
       topic: "persistent://public/default/mss_tag_push_event_test"
-

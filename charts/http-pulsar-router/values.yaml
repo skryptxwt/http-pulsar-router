@@ -51,9 +51,13 @@ terminationGracePeriodSeconds: 30
 
 pulsarAuth:
   enabled: false
+  create: false
   secretName: pulsar-auth-secret-key
   secretKey: adminToken
   mountPath: /app/secrets/pulsar
+  token: ""
+  tokenBase64: ""
+
 config:
   server:
     addr: ":8080"
@@ -70,5 +74,3 @@ config:
   routes:
     mss_tag_push_event_test:
       topic: "persistent://public/default/mss_tag_push_event_test"
-
-
