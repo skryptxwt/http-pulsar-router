@@ -1,0 +1,66 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/skryptxwt/http-pulsar-router
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: http
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+terminationGracePeriodSeconds: 30
+
+config:
+  server:
+    addr: ":8080"
+    readTimeout: "5s"
+    writeTimeout: "10s"
+    shutdownTimeout: "15s"
+    maxBodyBytes: 1048576
+    maxBatchItems: 1000
+  pulsar:
+    url: "pulsar://pulsar-broker.pulsar.svc.cluster.local:6650"
+    operationTimeout: "5s"
+    connectionTimeout: "5s"
+  routes:
+    mss_tag_push_event_test:
+      topic: "persistent://public/default/mss_tag_push_event_test"

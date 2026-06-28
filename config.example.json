@@ -1,0 +1,20 @@
+{
+  "server": {
+    "addr": ":8080",
+    "readTimeout": "5s",
+    "writeTimeout": "10s",
+    "shutdownTimeout": "15s",
+    "maxBodyBytes": 1048576,
+    "maxBatchItems": 1000
+  },
+  "pulsar": {
+    "url": "pulsar://127.0.0.1:6650",
+    "operationTimeout": "5s",
+    "connectionTimeout": "5s"
+  },
+  "routes": {
+    "mss_tag_push_event_test": {
+      "topic": "persistent://public/default/mss_tag_push_event_test"
+    }
+  }
+}

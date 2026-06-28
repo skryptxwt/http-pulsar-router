@@ -1,0 +1,6 @@
+apiVersion: v2
+name: http-pulsar-router
+description: Lightweight HTTP to Pulsar router for forwarding bastion-host data into isolated Pulsar topics.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

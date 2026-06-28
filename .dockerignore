@@ -1,0 +1,10 @@
+.git
+.agents
+bin
+dist
+coverage.out
+*.test
+*.log
+Dockerfile
+charts/*/charts
+charts/*/tmpcharts

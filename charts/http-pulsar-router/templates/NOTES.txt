@@ -1,0 +1,8 @@
+HTTP Pulsar Router has been installed.
+
+Service:
+  {{ include "http-pulsar-router.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+
+Example:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "http-pulsar-router.fullname" . }} 8080:{{ .Values.service.port }}
+  curl -X POST http://127.0.0.1:8080/api/v1/events -H 'Content-Type: application/json' -d '{"dataSet":"mss_tag_push_event_test","data":[{"tenantId":"95842832","uuId":"incident-demo","alertTag":"{}"}]}'
