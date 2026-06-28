@@ -19,16 +19,21 @@ podLabels: {}
 
 podSecurityContext:
   runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
   seccompProfile:
     type: RuntimeDefault
 
 securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
   allowPrivilegeEscalation: false
   capabilities:
     drop:
       - ALL
   readOnlyRootFilesystem: true
-  runAsNonRoot: true
 
 service:
   type: ClusterIP
@@ -74,3 +79,4 @@ config:
   routes:
     mss_tag_push_event_test:
       topic: "persistent://public/default/mss_tag_push_event_test"
+
