@@ -1,7 +1,7 @@
 replicaCount: 2
 
 image:
-  repository: ghcr.io/skryptxwt/http-pulsar-router
+  repository: skryptxwt/http-pulsar-router
   pullPolicy: IfNotPresent
   tag: ""
 

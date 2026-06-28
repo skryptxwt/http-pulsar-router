@@ -81,7 +81,7 @@ Run:
 Build:
 
 ```bash
-docker build -t ghcr.io/skryptxwt/http-pulsar-router:0.1.0 .
+docker build -t skryptxwt/http-pulsar-router:0.1.0 .
 ```
 
 Run:
@@ -89,13 +89,13 @@ Run:
 ```bash
 docker run --rm -p 8080:8080 \
   -v "$PWD/config.example.json:/app/config/config.json:ro" \
-  ghcr.io/skryptxwt/http-pulsar-router:0.1.0
+  skryptxwt/http-pulsar-router:0.1.0
 ```
 
 Push:
 
 ```bash
-docker push ghcr.io/skryptxwt/http-pulsar-router:0.1.0
+docker push skryptxwt/http-pulsar-router:0.1.0
 ```
 
 ## Helm
@@ -114,7 +114,7 @@ Production values example:
 replicaCount: 2
 
 image:
-  repository: ghcr.io/skryptxwt/http-pulsar-router
+  repository: skryptxwt/http-pulsar-router
   tag: "0.1.0"
 
 config:
