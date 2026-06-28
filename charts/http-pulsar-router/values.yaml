@@ -1,7 +1,7 @@
 replicaCount: 2
 
 image:
-  repository: skryptxwt/http-pulsar-router
+  repository: lengdanlexin/http-pulsar-router
   pullPolicy: IfNotPresent
   tag: ""
 

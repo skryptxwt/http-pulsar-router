@@ -28,7 +28,7 @@ It pushes images when:
 The default image is:
 
 ```text
-skryptxwt/http-pulsar-router
+lengdanlexin/http-pulsar-router
 ```
 
 Common pushed tags:
@@ -48,7 +48,7 @@ The chart defaults to:
 
 ```yaml
 image:
-  repository: skryptxwt/http-pulsar-router
+  repository: lengdanlexin/http-pulsar-router
   tag: ""
 ```
 
