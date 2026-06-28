@@ -39,6 +39,8 @@ type PulsarConfig struct {
 	URL               string `json:"url"`
 	OperationTimeout  string `json:"operationTimeout"`
 	ConnectionTimeout string `json:"connectionTimeout"`
+	AuthToken         string `json:"authToken,omitempty"`
+	AuthTokenFile     string `json:"authTokenFile,omitempty"`
 }
 
 type RouteEntry struct {

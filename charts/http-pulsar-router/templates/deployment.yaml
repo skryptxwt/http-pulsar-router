@@ -66,10 +66,23 @@ spec:
             - name: config
               mountPath: /app/config
               readOnly: true
+            {{- if .Values.pulsarAuth.enabled }}
+            - name: pulsar-auth
+              mountPath: {{ .Values.pulsarAuth.mountPath | quote }}
+              readOnly: true
+            {{- end }}
       volumes:
         - name: config
           configMap:
             name: {{ include "http-pulsar-router.fullname" . }}
+        {{- if .Values.pulsarAuth.enabled }}
+        - name: pulsar-auth
+          secret:
+            secretName: {{ .Values.pulsarAuth.secretName }}
+            items:
+              - key: {{ .Values.pulsarAuth.secretKey }}
+                path: token
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -82,3 +95,4 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+

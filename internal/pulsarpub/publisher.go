@@ -2,6 +2,8 @@ package pulsarpub
 
 import (
 	"context"
+	"os"
+	"strings"
 	"sync"
 
 	"github.com/apache/pulsar-client-go/pulsar"
@@ -16,11 +18,18 @@ type Publisher struct {
 }
 
 func New(cfg config.PulsarConfig) (*Publisher, error) {
-	client, err := pulsar.NewClient(pulsar.ClientOptions{
+	options := pulsar.ClientOptions{
 		URL:               cfg.URL,
 		OperationTimeout:  cfg.OperationTimeoutDuration(),
 		ConnectionTimeout: cfg.ConnectionTimeoutDuration(),
-	})
+	}
+	if token, err := authToken(cfg); err != nil {
+		return nil, err
+	} else if token != "" {
+		options.Authentication = pulsar.NewAuthenticationToken(token)
+	}
+
+	client, err := pulsar.NewClient(options)
 	if err != nil {
 		return nil, err
 	}
@@ -68,4 +77,15 @@ func (p *Publisher) producer(topic string) (pulsar.Producer, error) {
 	}
 	p.producers[topic] = producer
 	return producer, nil
+}
+
+func authToken(cfg config.PulsarConfig) (string, error) {
+	if strings.TrimSpace(cfg.AuthTokenFile) != "" {
+		data, err := os.ReadFile(cfg.AuthTokenFile)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(data)), nil
+	}
+	return strings.TrimSpace(cfg.AuthToken), nil
 }

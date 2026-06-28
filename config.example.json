@@ -10,7 +10,8 @@
   "pulsar": {
     "url": "pulsar://127.0.0.1:6650",
     "operationTimeout": "5s",
-    "connectionTimeout": "5s"
+    "connectionTimeout": "5s",
+    "authTokenFile": ""
   },
   "routes": {
     "mss_tag_push_event_test": {
@@ -18,3 +19,5 @@
     }
   }
 }
+
+

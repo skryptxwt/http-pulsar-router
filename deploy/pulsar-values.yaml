@@ -1,0 +1,30 @@
+replicaCount: 3
+
+image:
+  repository: lengdanlexin/http-pulsar-router
+  tag: "1.0.2"
+  pullPolicy: IfNotPresent
+
+pulsarAuth:
+  enabled: true
+  secretName: pulsar-auth-secret-key
+  secretKey: adminToken
+  mountPath: /app/secrets/pulsar
+
+config:
+  server:
+    addr: ":8080"
+    readTimeout: "5s"
+    writeTimeout: "10s"
+    shutdownTimeout: "15s"
+    maxBodyBytes: 1048576
+    maxBatchItems: 1000
+  pulsar:
+    url: "pulsar://10.72.9.83:32655"
+    operationTimeout: "5s"
+    connectionTimeout: "5s"
+    authTokenFile: "/app/secrets/pulsar/token"
+  routes:
+    mss_tag_push_event_test:
+      topic: "persistent://public/default/mss_tag_push_event_test"
+

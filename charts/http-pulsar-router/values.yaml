@@ -49,6 +49,11 @@ affinity: {}
 
 terminationGracePeriodSeconds: 30
 
+pulsarAuth:
+  enabled: false
+  secretName: pulsar-auth-secret-key
+  secretKey: adminToken
+  mountPath: /app/secrets/pulsar
 config:
   server:
     addr: ":8080"
@@ -61,6 +66,9 @@ config:
     url: "pulsar://pulsar-broker.pulsar.svc.cluster.local:6650"
     operationTimeout: "5s"
     connectionTimeout: "5s"
+    authTokenFile: ""
   routes:
     mss_tag_push_event_test:
       topic: "persistent://public/default/mss_tag_push_event_test"
+
+
