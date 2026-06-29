@@ -36,6 +36,8 @@ type itemMeta struct {
 	UUID     string `json:"uuId"`
 }
 
+const unknownDataSetLabel = "unknown"
+
 type responseBody struct {
 	OK        bool   `json:"ok"`
 	Error     string `json:"error,omitempty"`
@@ -73,6 +75,24 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleReady(w http.ResponseWriter, r *http.Request) {
+	cfg := h.serverConfig()
+	ctx, cancel := context.WithTimeout(r.Context(), cfg.ReadinessTimeoutDuration())
+	defer cancel()
+
+	topics := h.topics()
+	if len(topics) > 0 {
+		if err := h.publisher.Ready(ctx, topics); err != nil {
+			h.logger.Printf("readiness failed err=%v", err)
+			writeJSON(w, http.StatusServiceUnavailable, responseBody{OK: false, Error: "pulsar not ready"})
+			return
+		}
+		for _, topic := range topics {
+			if h.breaker.IsOpen(topic, cfg.CircuitBreaker, time.Now()) {
+				writeJSON(w, http.StatusServiceUnavailable, responseBody{OK: false, Error: "publish circuit open", Topic: topic})
+				return
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, responseBody{OK: true})
 }
 
@@ -89,6 +109,12 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := h.serverConfig()
+	ctx := r.Context()
+	if timeout := cfg.RequestTimeoutDuration(); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 	req, bodyBytes, err := decodeEventRequest(w, r, cfg.MaxBodyBytes)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -106,6 +132,14 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		h.writeEventJSON(w, http.StatusBadRequest, responseBody{OK: false, Error: "dataSet is required"}, "", "missing_data_set")
 		return
 	}
+	route, ok := h.lookupRoute(req.DataSet)
+	if !ok {
+		h.logger.Printf("request rejected dataSet=%s reason=route_not_found", req.DataSet)
+		h.writeEventJSON(w, http.StatusUnprocessableEntity, responseBody{OK: false, Error: "dataSet route not found", DataSet: req.DataSet}, unknownDataSetLabel, "route_not_found")
+		return
+	}
+	topic := route.Topic
+
 	if len(req.Data) == 0 {
 		h.writeEventJSON(w, http.StatusBadRequest, responseBody{OK: false, Error: "data must not be empty"}, req.DataSet, "empty_data")
 		return
@@ -115,14 +149,6 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		h.writeEventJSON(w, http.StatusRequestEntityTooLarge, responseBody{OK: false, Error: "data item count exceeds limit"}, req.DataSet, "max_batch_items")
 		return
 	}
-
-	route, ok := h.lookupRoute(req.DataSet)
-	if !ok {
-		h.logger.Printf("request rejected dataSet=%s reason=route_not_found", req.DataSet)
-		h.writeEventJSON(w, http.StatusUnprocessableEntity, responseBody{OK: false, Error: "dataSet route not found", DataSet: req.DataSet}, req.DataSet, "route_not_found")
-		return
-	}
-	topic := route.Topic
 
 	if !h.authorized(r, cfg.Auth, route.Auth) {
 		h.logger.Printf("request rejected dataSet=%s topic=%s reason=unauthorized remote=%s", req.DataSet, topic, r.RemoteAddr)
@@ -134,6 +160,12 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if status, reason, message := validateRouteRequest(route, bodyBytes, req); status != 0 {
 		h.logger.Printf("request rejected dataSet=%s topic=%s reason=%s bodyBytes=%d items=%d error=%s", req.DataSet, topic, reason, bodyBytes, len(req.Data), message)
 		h.writeEventJSON(w, status, responseBody{OK: false, Error: message, DataSet: req.DataSet, Topic: topic}, req.DataSet, reason)
+		return
+	}
+	metas, badIndex, err := parseItemMetas(req.Data)
+	if err != nil {
+		h.logger.Printf("request rejected dataSet=%s topic=%s reason=invalid_data_object index=%d", req.DataSet, topic, badIndex)
+		h.writeEventJSON(w, http.StatusBadRequest, responseBody{OK: false, Error: fmt.Sprintf("data[%d] is not a valid object", badIndex), DataSet: req.DataSet, Topic: topic}, req.DataSet, "invalid_data_object")
 		return
 	}
 
@@ -152,12 +184,7 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 	accepted := 0
 	for idx, item := range req.Data {
-		meta, err := parseItemMeta(item)
-		if err != nil {
-			h.logger.Printf("request rejected dataSet=%s topic=%s reason=invalid_data_object index=%d", req.DataSet, topic, idx)
-			h.writeEventJSON(w, http.StatusBadRequest, responseBody{OK: false, Error: fmt.Sprintf("data[%d] is not a valid object", idx)}, req.DataSet, "invalid_data_object")
-			return
-		}
+		meta := metas[idx]
 		props := map[string]string{
 			"dataSet": req.DataSet,
 		}
@@ -166,8 +193,11 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		}
 
 		start := time.Now()
-		if err := h.publishWithRetry(r.Context(), cfg.PublishRetry, req.DataSet, topic, meta, item, props); err != nil {
-			opened := h.breaker.RecordFailure(topic, cfg.CircuitBreaker, time.Now())
+		if err := h.publishWithRetry(ctx, cfg.PublishRetry, req.DataSet, topic, meta, item, props); err != nil {
+			opened := false
+			if !isContextDone(err) {
+				opened = h.breaker.RecordFailure(topic, cfg.CircuitBreaker, time.Now())
+			}
 			if opened {
 				h.metrics.Inc("sr_forwarder_publish_circuit_open_total", publishLabels(req.DataSet, topic))
 				h.metrics.SetGauge("sr_forwarder_publish_circuit_open", publishLabels(req.DataSet, topic), 1)
@@ -205,6 +235,13 @@ func (h *Handler) serverConfig() config.ServerConfig {
 		return lookup.ServerConfig()
 	}
 	return h.cfg
+}
+
+func (h *Handler) topics() []string {
+	if lister, ok := h.routes.(TopicLister); ok {
+		return lister.Topics()
+	}
+	return nil
 }
 
 func (h *Handler) authorized(r *http.Request, globalAuth config.AuthConfig, routeAuth config.BearerTokenConfig) bool {
@@ -277,6 +314,10 @@ func (h *Handler) publishWithRetry(ctx context.Context, retry config.RetryConfig
 		}
 	}
 	return err
+}
+
+func isContextDone(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func retryBackoff(initialBackoff time.Duration, maxBackoff time.Duration, failedAttempts int) time.Duration {
@@ -414,6 +455,18 @@ func parseItemMeta(item json.RawMessage) (itemMeta, error) {
 	meta.UUID = strings.TrimSpace(meta.UUID)
 	meta.TenantID = strings.TrimSpace(meta.TenantID)
 	return meta, nil
+}
+
+func parseItemMetas(items []json.RawMessage) ([]itemMeta, int, error) {
+	metas := make([]itemMeta, len(items))
+	for idx, item := range items {
+		meta, err := parseItemMeta(item)
+		if err != nil {
+			return nil, idx, err
+		}
+		metas[idx] = meta
+	}
+	return metas, -1, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, body responseBody) {

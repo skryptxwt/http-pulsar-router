@@ -32,6 +32,12 @@ func TestLoadAppliesDefaultsAndRoutes(t *testing.T) {
 	if cfg.Server.PublishRetry.MaxBackoff != defaultMaxBackoff {
 		t.Fatalf("max backoff = %q", cfg.Server.PublishRetry.MaxBackoff)
 	}
+	if cfg.Server.RequestTimeout != defaultRequestTimeout {
+		t.Fatalf("request timeout = %q", cfg.Server.RequestTimeout)
+	}
+	if cfg.Server.ReadinessTimeout != defaultReadinessTO {
+		t.Fatalf("readiness timeout = %q", cfg.Server.ReadinessTimeout)
+	}
 	if cfg.Server.CircuitBreaker.Enabled {
 		t.Fatal("circuit breaker should default to disabled")
 	}

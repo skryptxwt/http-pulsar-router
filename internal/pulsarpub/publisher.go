@@ -14,7 +14,12 @@ import (
 type Publisher struct {
 	client    pulsar.Client
 	mu        sync.Mutex
-	producers map[string]pulsar.Producer
+	producers map[string]*producerSlot
+}
+
+type producerSlot struct {
+	mu       sync.Mutex
+	producer pulsar.Producer
 }
 
 func New(cfg config.PulsarConfig) (*Publisher, error) {
@@ -36,7 +41,7 @@ func New(cfg config.PulsarConfig) (*Publisher, error) {
 
 	return &Publisher{
 		client:    client,
-		producers: make(map[string]pulsar.Producer),
+		producers: make(map[string]*producerSlot),
 	}, nil
 }
 
@@ -55,28 +60,67 @@ func (p *Publisher) Publish(ctx context.Context, topic string, key string, paylo
 
 func (p *Publisher) Close() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
+	slots := make([]*producerSlot, 0, len(p.producers))
 	for _, producer := range p.producers {
-		producer.Close()
+		slots = append(slots, producer)
+	}
+	p.mu.Unlock()
+
+	for _, slot := range slots {
+		slot.mu.Lock()
+		if slot.producer != nil {
+			slot.producer.Close()
+		}
+		slot.mu.Unlock()
 	}
 	p.client.Close()
 	return nil
 }
 
-func (p *Publisher) producer(topic string) (pulsar.Producer, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+func (p *Publisher) Ready(ctx context.Context, topics []string) error {
+	seen := make(map[string]struct{}, len(topics))
+	for _, topic := range topics {
+		if _, ok := seen[topic]; ok {
+			continue
+		}
+		seen[topic] = struct{}{}
+		producer, err := p.producer(topic)
+		if err != nil {
+			return err
+		}
+		if err := producer.FlushWithCtx(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-	if producer, ok := p.producers[topic]; ok {
-		return producer, nil
+func (p *Publisher) producer(topic string) (pulsar.Producer, error) {
+	slot := p.producerSlot(topic)
+	slot.mu.Lock()
+	defer slot.mu.Unlock()
+
+	if slot.producer != nil {
+		return slot.producer, nil
 	}
 	producer, err := p.client.CreateProducer(pulsar.ProducerOptions{Topic: topic})
 	if err != nil {
 		return nil, err
 	}
-	p.producers[topic] = producer
+	slot.producer = producer
 	return producer, nil
+}
+
+func (p *Publisher) producerSlot(topic string) *producerSlot {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	slot, ok := p.producers[topic]
+	if !ok {
+		slot = &producerSlot{}
+		p.producers[topic] = slot
+	}
+	return slot
 }
 
 func authToken(cfg config.PulsarConfig) (string, error) {

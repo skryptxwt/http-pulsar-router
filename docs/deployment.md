@@ -40,6 +40,7 @@ Payload:
 ```
 
 Each item in `data` is published as a separate Pulsar message. `uuId` is used as the Pulsar message key.
+If a Pulsar publish fails after some items were accepted, the response includes `accepted` with the number of items already written. Clients that retry a batch must drop the first `accepted` items or provide their own idempotency/deduplication on `uuId`.
 
 ## Config
 
@@ -52,6 +53,8 @@ Each item in `data` is published as a separate Pulsar message. `uuId` is used as
     "readTimeout": "5s",
     "writeTimeout": "10s",
     "shutdownTimeout": "15s",
+    "requestTimeout": "9s",
+    "readinessTimeout": "2s",
     "maxBodyBytes": 1048576,
     "maxBatchItems": 1000,
     "auth": {
@@ -99,6 +102,8 @@ The service polls the config file and reloads route, request limit, publish retr
 When `server.auth.enabled` is `true`, event endpoints require `Authorization: Bearer <token>`. Health and metrics endpoints are not protected by this option.
 If `server.auth.bearerToken` or `server.auth.bearerTokenFile` is configured, it is used globally for every dataSet. If no global token is configured, each route must configure `auth.bearerToken` or `auth.bearerTokenFile`, and the token is selected by request `dataSet`.
 `server.publishRetry.maxAttempts` includes the first publish attempt. Set it to `1` to disable retries.
+`server.requestTimeout` caps one HTTP publish request before `writeTimeout` is reached. Set it to `0s` to disable this internal deadline.
+`server.readinessTimeout` caps the `/readyz` Pulsar readiness check.
 `server.circuitBreaker` opens per topic after consecutive final publish failures and fails fast with `503` for `openDuration`.
 Route `validation` is optional. If a dataSet does not configure it, no per-dataSet body, batch, or required-field validation is applied.
 

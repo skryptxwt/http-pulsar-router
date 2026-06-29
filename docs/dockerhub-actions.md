@@ -50,7 +50,8 @@ The chart defaults to:
 ```yaml
 image:
   repository: lengdanlexin/http-pulsar-router
-  tag: ""
+  tag: "latest"
+  pullPolicy: IfNotPresent
 ```
 
-When `tag` is empty, Helm uses the chart `appVersion`.
+Override `image.tag` with a fixed release tag for reproducible production deployments.

@@ -23,6 +23,14 @@ func (s staticRoutes) LookupTopic(dataSet string) (string, bool) {
 	return topic, ok
 }
 
+func (s staticRoutes) Topics() []string {
+	topics := make([]string, 0, len(s))
+	for _, topic := range s {
+		topics = append(topics, topic)
+	}
+	return topics
+}
+
 type staticRouteEntries map[string]config.RouteEntry
 
 func (s staticRouteEntries) LookupTopic(dataSet string) (string, bool) {
@@ -35,6 +43,14 @@ func (s staticRouteEntries) LookupRoute(dataSet string) (config.RouteEntry, bool
 	return route, ok
 }
 
+func (s staticRouteEntries) Topics() []string {
+	topics := make([]string, 0, len(s))
+	for _, route := range s {
+		topics = append(topics, route.Topic)
+	}
+	return topics
+}
+
 type publishCall struct {
 	topic      string
 	key        string
@@ -45,6 +61,7 @@ type publishCall struct {
 type fakePublisher struct {
 	mu                   sync.Mutex
 	err                  error
+	readyErr             error
 	failRemaining        int
 	recoverAfterFailures bool
 	attempts             int
@@ -79,6 +96,10 @@ func (f *fakePublisher) Publish(_ context.Context, topic string, key string, pay
 }
 
 func (f *fakePublisher) Close() error { return nil }
+
+func (f *fakePublisher) Ready(_ context.Context, _ []string) error {
+	return f.readyErr
+}
 
 func testServerConfig() config.ServerConfig {
 	return config.ServerConfig{
@@ -443,6 +464,14 @@ func TestHandleEventsRejectsUnknownDataSet(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
+	key := `sr_forwarder_rejected_requests_total{dataSet="unknown",reason="route_not_found"}`
+	if handler.metrics.counters[key] != 1 {
+		t.Fatalf("unknown dataSet metric = %d", handler.metrics.counters[key])
+	}
+	badKey := `sr_forwarder_rejected_requests_total{dataSet="missing",reason="route_not_found"}`
+	if handler.metrics.counters[badKey] != 0 {
+		t.Fatalf("raw dataSet metric = %d", handler.metrics.counters[badKey])
+	}
 }
 
 func TestHandleEventsRejectsMalformedJSON(t *testing.T) {
@@ -480,5 +509,46 @@ func TestHandleEventsStopsOnPublishError(t *testing.T) {
 	}
 	if body.Accepted != 0 {
 		t.Fatalf("accepted = %d", body.Accepted)
+	}
+}
+
+func TestHandleEventsPrevalidatesAllItemsBeforePublishing(t *testing.T) {
+	publisher := &fakePublisher{}
+	handler := NewHandler(
+		staticRoutes{"ds": "topic"},
+		publisher,
+		testServerConfig(),
+		log.New(io.Discard, "", 0),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds","data":[{"uuId":"u1"},1]}`)))
+
+	handler.handleEvents(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if len(publisher.calls) != 0 {
+		t.Fatalf("publish calls = %d", len(publisher.calls))
+	}
+	if !strings.Contains(rec.Body.String(), "data[1] is not a valid object") {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
+func TestReadyzChecksPublisher(t *testing.T) {
+	handler := NewHandler(
+		staticRoutes{"ds": "topic"},
+		&fakePublisher{readyErr: errors.New("pulsar down")},
+		testServerConfig(),
+		log.New(io.Discard, "", 0),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+
+	handler.handleReady(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }

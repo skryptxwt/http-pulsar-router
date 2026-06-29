@@ -8,6 +8,7 @@ import (
 
 type Publisher interface {
 	Publish(ctx context.Context, topic string, key string, payload []byte, properties map[string]string) error
+	Ready(ctx context.Context, topics []string) error
 	Close() error
 }
 
@@ -21,4 +22,8 @@ type RouteEntryLookup interface {
 
 type ServerConfigLookup interface {
 	ServerConfig() config.ServerConfig
+}
+
+type TopicLister interface {
+	Topics() []string
 }

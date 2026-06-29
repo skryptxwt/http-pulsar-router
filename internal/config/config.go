@@ -14,6 +14,8 @@ const (
 	defaultReadTimeout     = "5s"
 	defaultWriteTimeout    = "10s"
 	defaultShutdownTimeout = "15s"
+	defaultRequestTimeout  = "9s"
+	defaultReadinessTO     = "2s"
 	defaultOperationTO     = "5s"
 	defaultConnectionTO    = "5s"
 	defaultMaxBodyBytes    = int64(1 << 20)
@@ -32,15 +34,17 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Addr            string               `json:"addr"`
-	ReadTimeout     string               `json:"readTimeout"`
-	WriteTimeout    string               `json:"writeTimeout"`
-	ShutdownTimeout string               `json:"shutdownTimeout"`
-	MaxBodyBytes    int64                `json:"maxBodyBytes"`
-	MaxBatchItems   int                  `json:"maxBatchItems"`
-	Auth            AuthConfig           `json:"auth"`
-	PublishRetry    RetryConfig          `json:"publishRetry"`
-	CircuitBreaker  CircuitBreakerConfig `json:"circuitBreaker"`
+	Addr             string               `json:"addr"`
+	ReadTimeout      string               `json:"readTimeout"`
+	WriteTimeout     string               `json:"writeTimeout"`
+	ShutdownTimeout  string               `json:"shutdownTimeout"`
+	RequestTimeout   string               `json:"requestTimeout"`
+	ReadinessTimeout string               `json:"readinessTimeout"`
+	MaxBodyBytes     int64                `json:"maxBodyBytes"`
+	MaxBatchItems    int                  `json:"maxBatchItems"`
+	Auth             AuthConfig           `json:"auth"`
+	PublishRetry     RetryConfig          `json:"publishRetry"`
+	CircuitBreaker   CircuitBreakerConfig `json:"circuitBreaker"`
 }
 
 type AuthConfig struct {
@@ -123,6 +127,16 @@ func (c *Config) Validate() error {
 	}
 	if _, err := time.ParseDuration(c.Server.ShutdownTimeout); err != nil {
 		return fmt.Errorf("server.shutdownTimeout: %w", err)
+	}
+	if requestTimeout, err := time.ParseDuration(c.Server.RequestTimeout); err != nil {
+		return fmt.Errorf("server.requestTimeout: %w", err)
+	} else if requestTimeout < 0 {
+		return errors.New("server.requestTimeout must not be negative")
+	}
+	if readinessTimeout, err := time.ParseDuration(c.Server.ReadinessTimeout); err != nil {
+		return fmt.Errorf("server.readinessTimeout: %w", err)
+	} else if readinessTimeout <= 0 {
+		return errors.New("server.readinessTimeout must be positive")
 	}
 	initialBackoff, err := time.ParseDuration(c.Server.PublishRetry.InitialBackoff)
 	if err != nil {
@@ -223,6 +237,12 @@ func (s ServerConfig) WithDefaults() ServerConfig {
 	if s.ShutdownTimeout == "" {
 		s.ShutdownTimeout = defaultShutdownTimeout
 	}
+	if s.RequestTimeout == "" {
+		s.RequestTimeout = defaultRequestTimeout
+	}
+	if s.ReadinessTimeout == "" {
+		s.ReadinessTimeout = defaultReadinessTO
+	}
 	if s.MaxBodyBytes == 0 {
 		s.MaxBodyBytes = defaultMaxBodyBytes
 	}
@@ -276,6 +296,16 @@ func (s ServerConfig) WriteTimeoutDuration() time.Duration {
 
 func (s ServerConfig) ShutdownTimeoutDuration() time.Duration {
 	d, _ := time.ParseDuration(s.ShutdownTimeout)
+	return d
+}
+
+func (s ServerConfig) RequestTimeoutDuration() time.Duration {
+	d, _ := time.ParseDuration(s.RequestTimeout)
+	return d
+}
+
+func (s ServerConfig) ReadinessTimeoutDuration() time.Duration {
+	d, _ := time.ParseDuration(s.ReadinessTimeout)
 	return d
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -62,6 +63,24 @@ func (s *Store) ServerConfig() ServerConfig {
 		return ServerConfig{}.WithDefaults()
 	}
 	return cfg.Server.WithDefaults()
+}
+
+func (s *Store) Topics() []string {
+	cfg := s.Snapshot()
+	if cfg == nil {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(cfg.Routes))
+	topics := make([]string, 0, len(cfg.Routes))
+	for _, route := range cfg.Routes {
+		if _, ok := seen[route.Topic]; ok {
+			continue
+		}
+		seen[route.Topic] = struct{}{}
+		topics = append(topics, route.Topic)
+	}
+	sort.Strings(topics)
+	return topics
 }
 
 func (s *Store) ReloadIfChanged() (bool, error) {

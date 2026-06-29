@@ -4,6 +4,8 @@
     "readTimeout": "5s",
     "writeTimeout": "10s",
     "shutdownTimeout": "15s",
+    "requestTimeout": "9s",
+    "readinessTimeout": "2s",
     "maxBodyBytes": 1048576,
     "maxBatchItems": 1000,
     "auth": {
