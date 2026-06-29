@@ -35,9 +35,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=ref,event=tag
-            type=sha,prefix=sha-
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,enable=${{ github.ref_type != 'tag' }}
 
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request'

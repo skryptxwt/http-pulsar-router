@@ -31,14 +31,17 @@ The default image is:
 lengdanlexin/http-pulsar-router
 ```
 
-Common pushed tags:
+Common pushed tags for `main` pushes:
 
 ```text
 latest
 main
 sha-<commit>
-0.1.0
-0.1
+```
+
+For `v*` tag pushes, only the original Git tag is pushed:
+
+```text
 v0.1.0
 ```
 
