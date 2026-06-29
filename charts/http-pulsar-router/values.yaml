@@ -65,39 +65,16 @@ pulsarAuth:
 
 config:
   server:
-    addr: ":8080"
-    readTimeout: "5s"
-    writeTimeout: "10s"
-    shutdownTimeout: "15s"
-    maxBodyBytes: 1048576
-    maxBatchItems: 1000
     auth:
       enabled: false
       bearerToken: ""
       bearerTokenFile: ""
-    publishRetry:
-      maxAttempts: 3
-      initialBackoff: "100ms"
-      maxBackoff: "2s"
-    circuitBreaker:
-      enabled: true
-      failureThreshold: 20
-      openDuration: "10s"
   pulsar:
     url: "pulsar://pulsar-broker.pulsar.svc.cluster.local:6650"
-    operationTimeout: "5s"
-    connectionTimeout: "5s"
     authTokenFile: ""
   routes:
     mss_tag_push_event_test:
       topic: "persistent://public/default/mss_tag_push_event_test"
-      # Used when config.server.auth.enabled=true and no global bearerToken/bearerTokenFile is configured.
-      # auth:
-      #   bearerToken: ""
-      #   bearerTokenFile: ""
-      # validation:
-      #   maxBodyBytes: 1048576
-      #   maxBatchItems: 1000
-      #   requiredFields:
-      #     - tenantId
-      #     - uuId
+      auth:
+        bearerToken: ""
+        bearerTokenFile: ""
