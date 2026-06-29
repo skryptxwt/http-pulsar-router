@@ -28,6 +28,12 @@ POST /gop/gop-data-service/api/v1/mss/web/alert/outer/add
 Content-Type: application/json
 ```
 
+When `server.auth.enabled` is `true`, include:
+
+```http
+Authorization: Bearer <token>
+```
+
 ```json
 {
   "dataSet": "mss_tag_push_event_test",
@@ -42,6 +48,7 @@ Content-Type: application/json
 ```
 
 Each item in `data` is published as one Pulsar message. `uuId` is used as the message key when present.
+Successful requests return `200 OK`.
 
 ## Hot Reload
 

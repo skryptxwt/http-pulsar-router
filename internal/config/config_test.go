@@ -77,6 +77,18 @@ func TestLoadRejectsInvalidPublishRetry(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsEnabledAuthWithoutToken(t *testing.T) {
+	path := writeConfig(t, `{
+		"server": {"auth": {"enabled": true}},
+		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
+		"routes": {"ds": {"topic":"persistent://public/default/ds"}}
+	}`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected enabled auth without token to fail")
+	}
+}
+
 func TestLoadRejectsInvalidRouteValidation(t *testing.T) {
 	path := writeConfig(t, `{
 		"pulsar": {"url":"pulsar://127.0.0.1:6650"},

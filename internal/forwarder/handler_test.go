@@ -113,7 +113,7 @@ func TestHandleEventsPublishesEachItem(t *testing.T) {
 
 	handler.handleEvents(rec, req)
 
-	if rec.Code != http.StatusAccepted {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	if len(publisher.calls) != 2 {
@@ -150,7 +150,7 @@ func TestRegisterSupportsOuterAlertAddPath(t *testing.T) {
 
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusAccepted {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	if len(publisher.calls) != 1 {
@@ -186,11 +186,56 @@ func TestHandleEventsRetriesPublishFailure(t *testing.T) {
 
 	handler.handleEvents(rec, req)
 
-	if rec.Code != http.StatusAccepted {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	if publisher.attempts != 3 {
 		t.Fatalf("attempts = %d", publisher.attempts)
+	}
+	if len(publisher.calls) != 1 {
+		t.Fatalf("publish calls = %d", len(publisher.calls))
+	}
+}
+
+func TestHandleEventsRequiresBearerTokenWhenAuthEnabled(t *testing.T) {
+	publisher := &fakePublisher{}
+	cfg := testServerConfig()
+	cfg.Auth = config.AuthConfig{
+		Enabled:     true,
+		BearerToken: "secret-token",
+	}
+	handler := NewHandler(
+		staticRoutes{"ds": "topic"},
+		publisher,
+		cfg,
+		log.New(io.Discard, "", 0),
+	)
+	body := []byte(`{"dataSet":"ds","data":[{"uuId":"u1"}]}`)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader(body))
+	handler.handleEvents(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("missing token status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("WWW-Authenticate") != "Bearer" {
+		t.Fatalf("www-authenticate = %q", rec.Header().Get("WWW-Authenticate"))
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer wrong-token")
+	handler.handleEvents(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong token status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer secret-token")
+	handler.handleEvents(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("valid token status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	if len(publisher.calls) != 1 {
 		t.Fatalf("publish calls = %d", len(publisher.calls))
@@ -210,7 +255,7 @@ func TestHandleEventsSkipsFieldValidationWhenRouteValidationMissing(t *testing.T
 
 	handler.handleEvents(rec, req)
 
-	if rec.Code != http.StatusAccepted {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }
@@ -323,7 +368,7 @@ func TestMetricsEndpointReportsPublishMetrics(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds","data":[{"uuId":"u1"}]}`)))
 	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusAccepted {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 

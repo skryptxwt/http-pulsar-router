@@ -54,6 +54,11 @@ Each item in `data` is published as a separate Pulsar message. `uuId` is used as
     "shutdownTimeout": "15s",
     "maxBodyBytes": 1048576,
     "maxBatchItems": 1000,
+    "auth": {
+      "enabled": false,
+      "bearerToken": "",
+      "bearerTokenFile": ""
+    },
     "publishRetry": {
       "maxAttempts": 3,
       "initialBackoff": "100ms",
@@ -87,6 +92,7 @@ Each item in `data` is published as a separate Pulsar message. `uuId` is used as
 ```
 
 The service polls the config file and reloads route, request limit, publish retry, circuit breaker, and route validation changes without restarting.
+When `server.auth.enabled` is `true`, event endpoints require `Authorization: Bearer <token>`. Health and metrics endpoints are not protected by this option.
 `server.publishRetry.maxAttempts` includes the first publish attempt. Set it to `1` to disable retries.
 `server.circuitBreaker` opens per topic after consecutive final publish failures and fails fast with `503` for `openDuration`.
 Route `validation` is optional. If a dataSet does not configure it, no per-dataSet body, batch, or required-field validation is applied.
@@ -189,8 +195,9 @@ The chart uses rolling updates with `maxUnavailable: 0` and includes `/healthz` 
 
 ## Status Codes
 
-- `202`: all items were published to Pulsar.
+- `200`: all items were published to Pulsar.
 - `400`: invalid JSON or invalid request shape.
+- `401`: request authorization failed when `server.auth.enabled=true`.
 - `413`: request body or batch item count exceeds the configured limit.
 - `422`: `dataSet` has no configured route.
 - `503`: publish to Pulsar failed; caller should retry.

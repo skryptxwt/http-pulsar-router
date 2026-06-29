@@ -2,12 +2,14 @@ package forwarder
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -87,6 +89,13 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := h.serverConfig()
+	if !h.authorized(r, cfg.Auth) {
+		h.logger.Printf("request rejected reason=unauthorized remote=%s", r.RemoteAddr)
+		w.Header().Set("WWW-Authenticate", "Bearer")
+		h.writeEventJSON(w, http.StatusUnauthorized, responseBody{OK: false, Error: "unauthorized"}, "", "unauthorized")
+		return
+	}
+
 	req, bodyBytes, err := decodeEventRequest(w, r, cfg.MaxBodyBytes)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -183,7 +192,7 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		accepted++
 	}
 
-	h.writeEventJSON(w, http.StatusAccepted, responseBody{
+	h.writeEventJSON(w, http.StatusOK, responseBody{
 		OK:       true,
 		Accepted: accepted,
 		DataSet:  req.DataSet,
@@ -196,6 +205,37 @@ func (h *Handler) serverConfig() config.ServerConfig {
 		return lookup.ServerConfig()
 	}
 	return h.cfg
+}
+
+func (h *Handler) authorized(r *http.Request, cfg config.AuthConfig) bool {
+	if !cfg.Enabled {
+		return true
+	}
+
+	expected, err := bearerToken(cfg)
+	if err != nil {
+		h.logger.Printf("auth token load failed err=%v", err)
+		return false
+	}
+	actual := strings.TrimSpace(r.Header.Get("Authorization"))
+	const prefix = "Bearer "
+	if len(actual) <= len(prefix) || !strings.EqualFold(actual[:len(prefix)], prefix) {
+		return false
+	}
+
+	actualToken := strings.TrimSpace(actual[len(prefix):])
+	return subtle.ConstantTimeCompare([]byte(actualToken), []byte(expected)) == 1
+}
+
+func bearerToken(cfg config.AuthConfig) (string, error) {
+	if strings.TrimSpace(cfg.BearerTokenFile) != "" {
+		data, err := os.ReadFile(cfg.BearerTokenFile)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(data)), nil
+	}
+	return strings.TrimSpace(cfg.BearerToken), nil
 }
 
 func (h *Handler) lookupRoute(dataSet string) (config.RouteEntry, bool) {

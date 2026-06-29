@@ -6,6 +6,11 @@
     "shutdownTimeout": "15s",
     "maxBodyBytes": 1048576,
     "maxBatchItems": 1000,
+    "auth": {
+      "enabled": false,
+      "bearerToken": "",
+      "bearerTokenFile": ""
+    },
     "publishRetry": {
       "maxAttempts": 3,
       "initialBackoff": "100ms",

@@ -38,8 +38,15 @@ type ServerConfig struct {
 	ShutdownTimeout string               `json:"shutdownTimeout"`
 	MaxBodyBytes    int64                `json:"maxBodyBytes"`
 	MaxBatchItems   int                  `json:"maxBatchItems"`
+	Auth            AuthConfig           `json:"auth"`
 	PublishRetry    RetryConfig          `json:"publishRetry"`
 	CircuitBreaker  CircuitBreakerConfig `json:"circuitBreaker"`
+}
+
+type AuthConfig struct {
+	Enabled         bool   `json:"enabled"`
+	BearerToken     string `json:"bearerToken,omitempty"`
+	BearerTokenFile string `json:"bearerTokenFile,omitempty"`
 }
 
 type RetryConfig struct {
@@ -99,6 +106,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.MaxBatchItems <= 0 {
 		return errors.New("server.maxBatchItems must be positive")
+	}
+	if c.Server.Auth.Enabled && strings.TrimSpace(c.Server.Auth.BearerToken) == "" && strings.TrimSpace(c.Server.Auth.BearerTokenFile) == "" {
+		return errors.New("server.auth.bearerToken or server.auth.bearerTokenFile is required when auth is enabled")
 	}
 	if c.Server.PublishRetry.MaxAttempts <= 0 {
 		return errors.New("server.publishRetry.maxAttempts must be positive")
