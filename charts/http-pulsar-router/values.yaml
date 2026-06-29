@@ -2,8 +2,8 @@ replicaCount: 2
 
 image:
   repository: lengdanlexin/http-pulsar-router
-  pullPolicy: IfNotPresent
-  tag: ""
+  pullPolicy: Always
+  tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -36,9 +36,10 @@ securityContext:
   readOnlyRootFilesystem: true
 
 service:
-  type: ClusterIP
+  type: NodePort
   port: 80
   targetPort: http
+  nodePort: 31523
 
 resources:
   requests:
