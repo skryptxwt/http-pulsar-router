@@ -201,8 +201,10 @@ func TestHandleEventsRequiresBearerTokenWhenAuthEnabled(t *testing.T) {
 	publisher := &fakePublisher{}
 	cfg := testServerConfig()
 	cfg.Auth = config.AuthConfig{
-		Enabled:     true,
-		BearerToken: "secret-token",
+		Enabled: true,
+		BearerTokenConfig: config.BearerTokenConfig{
+			BearerToken: "secret-token",
+		},
 	}
 	handler := NewHandler(
 		staticRoutes{"ds": "topic"},
@@ -239,6 +241,49 @@ func TestHandleEventsRequiresBearerTokenWhenAuthEnabled(t *testing.T) {
 	}
 	if len(publisher.calls) != 1 {
 		t.Fatalf("publish calls = %d", len(publisher.calls))
+	}
+}
+
+func TestHandleEventsUsesRouteBearerTokenWhenGlobalTokenMissing(t *testing.T) {
+	publisher := &fakePublisher{}
+	cfg := testServerConfig()
+	cfg.Auth = config.AuthConfig{Enabled: true}
+	handler := NewHandler(
+		staticRouteEntries{
+			"ds-a": {
+				Topic: "topic-a",
+				Auth:  config.BearerTokenConfig{BearerToken: "token-a"},
+			},
+			"ds-b": {
+				Topic: "topic-b",
+				Auth:  config.BearerTokenConfig{BearerToken: "token-b"},
+			},
+		},
+		publisher,
+		cfg,
+		log.New(io.Discard, "", 0),
+	)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds-a","data":[{"uuId":"u1"}]}`)))
+	req.Header.Set("Authorization", "Bearer token-b")
+	handler.handleEvents(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong route token status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds-a","data":[{"uuId":"u1"}]}`)))
+	req.Header.Set("Authorization", "Bearer token-a")
+	handler.handleEvents(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("valid route token status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if len(publisher.calls) != 1 {
+		t.Fatalf("publish calls = %d", len(publisher.calls))
+	}
+	if publisher.calls[0].topic != "topic-a" {
+		t.Fatalf("topic = %q", publisher.calls[0].topic)
 	}
 }
 

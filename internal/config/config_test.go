@@ -89,6 +89,27 @@ func TestLoadRejectsEnabledAuthWithoutToken(t *testing.T) {
 	}
 }
 
+func TestLoadAllowsEnabledAuthWithRouteToken(t *testing.T) {
+	path := writeConfig(t, `{
+		"server": {"auth": {"enabled": true}},
+		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
+		"routes": {
+			"ds": {
+				"topic":"persistent://public/default/ds",
+				"auth": {"bearerToken": "route-token"}
+			}
+		}
+	}`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Routes["ds"].Auth.BearerToken != "route-token" {
+		t.Fatalf("route token = %q", cfg.Routes["ds"].Auth.BearerToken)
+	}
+}
+
 func TestLoadRejectsInvalidRouteValidation(t *testing.T) {
 	path := writeConfig(t, `{
 		"pulsar": {"url":"pulsar://127.0.0.1:6650"},

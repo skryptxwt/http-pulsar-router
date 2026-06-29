@@ -89,13 +89,6 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := h.serverConfig()
-	if !h.authorized(r, cfg.Auth) {
-		h.logger.Printf("request rejected reason=unauthorized remote=%s", r.RemoteAddr)
-		w.Header().Set("WWW-Authenticate", "Bearer")
-		h.writeEventJSON(w, http.StatusUnauthorized, responseBody{OK: false, Error: "unauthorized"}, "", "unauthorized")
-		return
-	}
-
 	req, bodyBytes, err := decodeEventRequest(w, r, cfg.MaxBodyBytes)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -130,6 +123,13 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	topic := route.Topic
+
+	if !h.authorized(r, cfg.Auth, route.Auth) {
+		h.logger.Printf("request rejected dataSet=%s topic=%s reason=unauthorized remote=%s", req.DataSet, topic, r.RemoteAddr)
+		w.Header().Set("WWW-Authenticate", "Bearer")
+		h.writeEventJSON(w, http.StatusUnauthorized, responseBody{OK: false, Error: "unauthorized", DataSet: req.DataSet, Topic: topic}, req.DataSet, "unauthorized")
+		return
+	}
 
 	if status, reason, message := validateRouteRequest(route, bodyBytes, req); status != 0 {
 		h.logger.Printf("request rejected dataSet=%s topic=%s reason=%s bodyBytes=%d items=%d error=%s", req.DataSet, topic, reason, bodyBytes, len(req.Data), message)
@@ -207,12 +207,17 @@ func (h *Handler) serverConfig() config.ServerConfig {
 	return h.cfg
 }
 
-func (h *Handler) authorized(r *http.Request, cfg config.AuthConfig) bool {
-	if !cfg.Enabled {
+func (h *Handler) authorized(r *http.Request, globalAuth config.AuthConfig, routeAuth config.BearerTokenConfig) bool {
+	if !globalAuth.Enabled {
 		return true
 	}
 
-	expected, err := bearerToken(cfg)
+	tokenAuth := globalAuth.BearerTokenConfig
+	if !authHasToken(tokenAuth) {
+		tokenAuth = routeAuth
+	}
+
+	expected, err := bearerToken(tokenAuth)
 	if err != nil {
 		h.logger.Printf("auth token load failed err=%v", err)
 		return false
@@ -227,7 +232,11 @@ func (h *Handler) authorized(r *http.Request, cfg config.AuthConfig) bool {
 	return subtle.ConstantTimeCompare([]byte(actualToken), []byte(expected)) == 1
 }
 
-func bearerToken(cfg config.AuthConfig) (string, error) {
+func authHasToken(cfg config.BearerTokenConfig) bool {
+	return strings.TrimSpace(cfg.BearerToken) != "" || strings.TrimSpace(cfg.BearerTokenFile) != ""
+}
+
+func bearerToken(cfg config.BearerTokenConfig) (string, error) {
 	if strings.TrimSpace(cfg.BearerTokenFile) != "" {
 		data, err := os.ReadFile(cfg.BearerTokenFile)
 		if err != nil {

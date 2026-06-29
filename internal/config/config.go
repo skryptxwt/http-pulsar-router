@@ -44,7 +44,11 @@ type ServerConfig struct {
 }
 
 type AuthConfig struct {
-	Enabled         bool   `json:"enabled"`
+	Enabled bool `json:"enabled"`
+	BearerTokenConfig
+}
+
+type BearerTokenConfig struct {
 	BearerToken     string `json:"bearerToken,omitempty"`
 	BearerTokenFile string `json:"bearerTokenFile,omitempty"`
 }
@@ -70,8 +74,9 @@ type PulsarConfig struct {
 }
 
 type RouteEntry struct {
-	Topic      string          `json:"topic"`
-	Validation RouteValidation `json:"validation,omitempty"`
+	Topic      string            `json:"topic"`
+	Auth       BearerTokenConfig `json:"auth,omitempty"`
+	Validation RouteValidation   `json:"validation,omitempty"`
 }
 
 type RouteValidation struct {
@@ -106,9 +111,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.MaxBatchItems <= 0 {
 		return errors.New("server.maxBatchItems must be positive")
-	}
-	if c.Server.Auth.Enabled && strings.TrimSpace(c.Server.Auth.BearerToken) == "" && strings.TrimSpace(c.Server.Auth.BearerTokenFile) == "" {
-		return errors.New("server.auth.bearerToken or server.auth.bearerTokenFile is required when auth is enabled")
 	}
 	if c.Server.PublishRetry.MaxAttempts <= 0 {
 		return errors.New("server.publishRetry.maxAttempts must be positive")
@@ -170,6 +172,9 @@ func (c *Config) Validate() error {
 		if strings.TrimSpace(route.Topic) == "" {
 			return fmt.Errorf("routes.%s.topic is required", dataSet)
 		}
+		if c.Server.Auth.Enabled && !authHasToken(c.Server.Auth.BearerTokenConfig) && !authHasToken(route.Auth) {
+			return fmt.Errorf("routes.%s.auth.bearerToken or bearerTokenFile is required when server auth is enabled without a global token", dataSet)
+		}
 		if route.Validation.MaxBodyBytes < 0 {
 			return fmt.Errorf("routes.%s.validation.maxBodyBytes must not be negative", dataSet)
 		}
@@ -183,6 +188,10 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+func authHasToken(auth BearerTokenConfig) bool {
+	return strings.TrimSpace(auth.BearerToken) != "" || strings.TrimSpace(auth.BearerTokenFile) != ""
 }
 
 func (c *Config) applyDefaults() {

@@ -78,6 +78,10 @@ Each item in `data` is published as a separate Pulsar message. `uuId` is used as
   "routes": {
     "mss_tag_push_event_test": {
       "topic": "persistent://public/default/mss_tag_push_event_test",
+      "auth": {
+        "bearerToken": "",
+        "bearerTokenFile": ""
+      },
       "validation": {
         "maxBodyBytes": 1048576,
         "maxBatchItems": 1000,
@@ -93,6 +97,7 @@ Each item in `data` is published as a separate Pulsar message. `uuId` is used as
 
 The service polls the config file and reloads route, request limit, publish retry, circuit breaker, and route validation changes without restarting.
 When `server.auth.enabled` is `true`, event endpoints require `Authorization: Bearer <token>`. Health and metrics endpoints are not protected by this option.
+If `server.auth.bearerToken` or `server.auth.bearerTokenFile` is configured, it is used globally for every dataSet. If no global token is configured, each route must configure `auth.bearerToken` or `auth.bearerTokenFile`, and the token is selected by request `dataSet`.
 `server.publishRetry.maxAttempts` includes the first publish attempt. Set it to `1` to disable retries.
 `server.circuitBreaker` opens per topic after consecutive final publish failures and fails fast with `503` for `openDuration`.
 Route `validation` is optional. If a dataSet does not configure it, no per-dataSet body, batch, or required-field validation is applied.

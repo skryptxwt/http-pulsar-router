@@ -34,6 +34,8 @@ When `server.auth.enabled` is `true`, include:
 Authorization: Bearer <token>
 ```
 
+If `server.auth.bearerToken` or `server.auth.bearerTokenFile` is configured, it is used globally. Otherwise the token is resolved from the matched `routes.<dataSet>.auth` config.
+
 ```json
 {
   "dataSet": "mss_tag_push_event_test",
