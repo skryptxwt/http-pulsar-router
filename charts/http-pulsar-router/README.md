@@ -10,34 +10,27 @@ helm upgrade --install http-pulsar-router ./charts/http-pulsar-router \
 
 ## Configure
 
-Keep stable deployment choices in a small values file, and pass environment-specific values such as Pulsar address and temporary tokens with `--set-string`.
+Keep only environment-specific values in a small values file.
+When `pulsarAuth.enabled=true`, the chart automatically sets `config.pulsar.authTokenFile` to `<pulsarAuth.mountPath>/token` unless it is explicitly overridden.
 
 ```yaml
 replicaCount: 3
 
-image:
-  repository: lengdanlexin/http-pulsar-router
-  tag: latest
-  pullPolicy: Always
-
 pulsarAuth:
   enabled: true
   create: true
-  secretName: pulsar-auth-secret-key
-  secretKey: adminToken
-  mountPath: /app/secrets/pulsar
+  tokenBase64: "..."
 
 config:
+  pulsar:
+    url: pulsar://10.72.9.83:32655
   server:
     auth:
       enabled: true
-  pulsar:
-    authTokenFile: /app/secrets/pulsar/token
   routes:
     mss_tag_push_event_test:
-      topic: persistent://public/default/mss_tag_push_event_test
       auth:
-        bearerTokenFile: ""
+        bearerToken: "..."
 ```
 
 Apply:
@@ -45,8 +38,5 @@ Apply:
 ```bash
 helm upgrade --install http-pulsar-router ./charts/http-pulsar-router \
   -n sr-forwarder \
-  -f values-prod.yaml \
-  --set-string config.pulsar.url='pulsar://10.72.9.83:32655' \
-  --set-string pulsarAuth.tokenBase64='...' \
-  --set-string config.routes.mss_tag_push_event_test.auth.bearerToken='...'
+  -f values-prod.yaml
 ```

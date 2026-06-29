@@ -38,3 +38,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- default "default" .Values.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "http-pulsar-router.effectiveConfig" -}}
+{{- $config := deepCopy .Values.config -}}
+{{- if and .Values.pulsarAuth.enabled (empty $config.pulsar.authTokenFile) -}}
+{{- $_ := set $config.pulsar "authTokenFile" (printf "%s/token" (trimSuffix "/" .Values.pulsarAuth.mountPath)) -}}
+{{- end -}}
+{{- $config | toPrettyJson -}}
+{{- end -}}

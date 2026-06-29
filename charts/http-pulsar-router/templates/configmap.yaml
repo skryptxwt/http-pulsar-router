@@ -6,4 +6,4 @@ metadata:
     {{- include "http-pulsar-router.labels" . | nindent 4 }}
 data:
   config.json: |
-{{ .Values.config | toPrettyJson | indent 4 }}
+{{ include "http-pulsar-router.effectiveConfig" . | indent 4 }}

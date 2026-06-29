@@ -17,7 +17,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ .Values.config | toPrettyJson | sha256sum }}
+        checksum/config: {{ include "http-pulsar-router.effectiveConfig" . | sha256sum }}
         {{- if and .Values.pulsarAuth.enabled .Values.pulsarAuth.create }}
         checksum/pulsar-auth: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- end }}
