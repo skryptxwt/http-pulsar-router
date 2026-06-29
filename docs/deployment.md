@@ -17,6 +17,13 @@ POST /api/v1/events
 Content-Type: application/json
 ```
 
+Alias endpoint with identical behavior:
+
+```http
+POST /gop/gop-data-service/api/v1/mss/web/alert/outer/add
+Content-Type: application/json
+```
+
 Payload:
 
 ```json

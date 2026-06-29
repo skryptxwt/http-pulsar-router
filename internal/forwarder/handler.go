@@ -52,6 +52,7 @@ func NewHandler(routes RouteLookup, publisher Publisher, cfg config.ServerConfig
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/events", h.handleEvents)
+	mux.HandleFunc("/gop/gop-data-service/api/v1/mss/web/alert/outer/add", h.handleEvents)
 	mux.HandleFunc("/healthz", h.handleHealth)
 	mux.HandleFunc("/readyz", h.handleReady)
 }

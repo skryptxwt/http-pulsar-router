@@ -97,6 +97,34 @@ func TestHandleEventsPublishesEachItem(t *testing.T) {
 	}
 }
 
+func TestRegisterSupportsOuterAlertAddPath(t *testing.T) {
+	publisher := &fakePublisher{}
+	handler := NewHandler(
+		staticRoutes{"mss_tag_push_event_test": "persistent://public/default/mss_tag_push_event_test"},
+		publisher,
+		config.ServerConfig{MaxBodyBytes: 4096, MaxBatchItems: 10},
+		log.New(io.Discard, "", 0),
+	)
+	mux := http.NewServeMux()
+	handler.Register(mux)
+
+	body := []byte(`{"dataSet":"mss_tag_push_event_test","data":[{"tenantId":"95842832","uuId":"incident-1"}]}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/gop/gop-data-service/api/v1/mss/web/alert/outer/add", bytes.NewReader(body))
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if len(publisher.calls) != 1 {
+		t.Fatalf("publish calls = %d", len(publisher.calls))
+	}
+	if publisher.calls[0].key != "incident-1" {
+		t.Fatalf("key = %q", publisher.calls[0].key)
+	}
+}
+
 func TestHandleEventsRejectsUnknownDataSet(t *testing.T) {
 	handler := NewHandler(staticRoutes{}, &fakePublisher{}, config.ServerConfig{MaxBodyBytes: 4096, MaxBatchItems: 10}, log.New(io.Discard, "", 0))
 	rec := httptest.NewRecorder()

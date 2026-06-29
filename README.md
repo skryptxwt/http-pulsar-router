@@ -21,6 +21,13 @@ POST /api/v1/events
 Content-Type: application/json
 ```
 
+The same forwarding behavior is also available at:
+
+```http
+POST /gop/gop-data-service/api/v1/mss/web/alert/outer/add
+Content-Type: application/json
+```
+
 ```json
 {
   "dataSet": "mss_tag_push_event_test",
