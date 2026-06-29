@@ -75,6 +75,10 @@ config:
       maxAttempts: 3
       initialBackoff: "100ms"
       maxBackoff: "2s"
+    circuitBreaker:
+      enabled: true
+      failureThreshold: 20
+      openDuration: "10s"
   pulsar:
     url: "pulsar://pulsar-broker.pulsar.svc.cluster.local:6650"
     operationTimeout: "5s"
@@ -83,3 +87,9 @@ config:
   routes:
     mss_tag_push_event_test:
       topic: "persistent://public/default/mss_tag_push_event_test"
+      # validation:
+      #   maxBodyBytes: 1048576
+      #   maxBatchItems: 1000
+      #   requiredFields:
+      #     - tenantId
+      #     - uuId

@@ -21,6 +21,8 @@ const (
 	defaultRetryAttempts   = 3
 	defaultInitialBackoff  = "100ms"
 	defaultMaxBackoff      = "2s"
+	defaultCBThreshold     = 20
+	defaultCBOpenDuration  = "10s"
 )
 
 type Config struct {
@@ -30,19 +32,26 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Addr            string      `json:"addr"`
-	ReadTimeout     string      `json:"readTimeout"`
-	WriteTimeout    string      `json:"writeTimeout"`
-	ShutdownTimeout string      `json:"shutdownTimeout"`
-	MaxBodyBytes    int64       `json:"maxBodyBytes"`
-	MaxBatchItems   int         `json:"maxBatchItems"`
-	PublishRetry    RetryConfig `json:"publishRetry"`
+	Addr            string               `json:"addr"`
+	ReadTimeout     string               `json:"readTimeout"`
+	WriteTimeout    string               `json:"writeTimeout"`
+	ShutdownTimeout string               `json:"shutdownTimeout"`
+	MaxBodyBytes    int64                `json:"maxBodyBytes"`
+	MaxBatchItems   int                  `json:"maxBatchItems"`
+	PublishRetry    RetryConfig          `json:"publishRetry"`
+	CircuitBreaker  CircuitBreakerConfig `json:"circuitBreaker"`
 }
 
 type RetryConfig struct {
 	MaxAttempts    int    `json:"maxAttempts"`
 	InitialBackoff string `json:"initialBackoff"`
 	MaxBackoff     string `json:"maxBackoff"`
+}
+
+type CircuitBreakerConfig struct {
+	Enabled          bool   `json:"enabled"`
+	FailureThreshold int    `json:"failureThreshold"`
+	OpenDuration     string `json:"openDuration"`
 }
 
 type PulsarConfig struct {
@@ -54,7 +63,14 @@ type PulsarConfig struct {
 }
 
 type RouteEntry struct {
-	Topic string `json:"topic"`
+	Topic      string          `json:"topic"`
+	Validation RouteValidation `json:"validation,omitempty"`
+}
+
+type RouteValidation struct {
+	MaxBodyBytes   int64    `json:"maxBodyBytes,omitempty"`
+	MaxBatchItems  int      `json:"maxBatchItems,omitempty"`
+	RequiredFields []string `json:"requiredFields,omitempty"`
 }
 
 func Load(path string) (*Config, error) {
@@ -113,6 +129,18 @@ func (c *Config) Validate() error {
 	if maxBackoff < initialBackoff {
 		return errors.New("server.publishRetry.maxBackoff must be greater than or equal to initialBackoff")
 	}
+	if c.Server.CircuitBreaker.Enabled {
+		if c.Server.CircuitBreaker.FailureThreshold <= 0 {
+			return errors.New("server.circuitBreaker.failureThreshold must be positive when enabled")
+		}
+		openDuration, err := time.ParseDuration(c.Server.CircuitBreaker.OpenDuration)
+		if err != nil {
+			return fmt.Errorf("server.circuitBreaker.openDuration: %w", err)
+		}
+		if openDuration <= 0 {
+			return errors.New("server.circuitBreaker.openDuration must be positive when enabled")
+		}
+	}
 	if strings.TrimSpace(c.Pulsar.URL) == "" {
 		return errors.New("pulsar.url is required")
 	}
@@ -132,6 +160,17 @@ func (c *Config) Validate() error {
 		if strings.TrimSpace(route.Topic) == "" {
 			return fmt.Errorf("routes.%s.topic is required", dataSet)
 		}
+		if route.Validation.MaxBodyBytes < 0 {
+			return fmt.Errorf("routes.%s.validation.maxBodyBytes must not be negative", dataSet)
+		}
+		if route.Validation.MaxBatchItems < 0 {
+			return fmt.Errorf("routes.%s.validation.maxBatchItems must not be negative", dataSet)
+		}
+		for idx, field := range route.Validation.RequiredFields {
+			if strings.TrimSpace(field) == "" {
+				return fmt.Errorf("routes.%s.validation.requiredFields[%d] must not be empty", dataSet, idx)
+			}
+		}
 	}
 	return nil
 }
@@ -143,6 +182,12 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Pulsar.ConnectionTimeout == "" {
 		c.Pulsar.ConnectionTimeout = defaultConnectionTO
+	}
+	for dataSet, route := range c.Routes {
+		for idx, field := range route.Validation.RequiredFields {
+			route.Validation.RequiredFields[idx] = strings.TrimSpace(field)
+		}
+		c.Routes[dataSet] = route
 	}
 }
 
@@ -174,6 +219,14 @@ func (s ServerConfig) WithDefaults() ServerConfig {
 	if s.PublishRetry.MaxBackoff == "" {
 		s.PublishRetry.MaxBackoff = defaultMaxBackoff
 	}
+	if s.CircuitBreaker.Enabled {
+		if s.CircuitBreaker.FailureThreshold == 0 {
+			s.CircuitBreaker.FailureThreshold = defaultCBThreshold
+		}
+		if s.CircuitBreaker.OpenDuration == "" {
+			s.CircuitBreaker.OpenDuration = defaultCBOpenDuration
+		}
+	}
 	return s
 }
 
@@ -184,6 +237,11 @@ func (r RetryConfig) InitialBackoffDuration() time.Duration {
 
 func (r RetryConfig) MaxBackoffDuration() time.Duration {
 	d, _ := time.ParseDuration(r.MaxBackoff)
+	return d
+}
+
+func (c CircuitBreakerConfig) OpenDurationValue() time.Duration {
+	d, _ := time.ParseDuration(c.OpenDuration)
 	return d
 }
 

@@ -47,6 +47,15 @@ func (s *Store) LookupTopic(dataSet string) (string, bool) {
 	return route.Topic, true
 }
 
+func (s *Store) LookupRoute(dataSet string) (RouteEntry, bool) {
+	cfg := s.Snapshot()
+	if cfg == nil {
+		return RouteEntry{}, false
+	}
+	route, ok := cfg.Routes[dataSet]
+	return route, ok
+}
+
 func (s *Store) ServerConfig() ServerConfig {
 	cfg := s.Snapshot()
 	if cfg == nil {

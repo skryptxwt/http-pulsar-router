@@ -15,6 +15,10 @@ type RouteLookup interface {
 	LookupTopic(dataSet string) (string, bool)
 }
 
+type RouteEntryLookup interface {
+	LookupRoute(dataSet string) (config.RouteEntry, bool)
+}
+
 type ServerConfigLookup interface {
 	ServerConfig() config.ServerConfig
 }

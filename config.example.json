@@ -10,6 +10,11 @@
       "maxAttempts": 3,
       "initialBackoff": "100ms",
       "maxBackoff": "2s"
+    },
+    "circuitBreaker": {
+      "enabled": true,
+      "failureThreshold": 20,
+      "openDuration": "10s"
     }
   },
   "pulsar": {
@@ -20,8 +25,15 @@
   },
   "routes": {
     "mss_tag_push_event_test": {
-      "topic": "persistent://public/default/mss_tag_push_event_test"
+      "topic": "persistent://public/default/mss_tag_push_event_test",
+      "validation": {
+        "maxBodyBytes": 1048576,
+        "maxBatchItems": 1000,
+        "requiredFields": [
+          "tenantId",
+          "uuId"
+        ]
+      }
     }
   }
 }
-

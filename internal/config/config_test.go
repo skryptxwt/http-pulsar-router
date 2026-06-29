@@ -32,8 +32,30 @@ func TestLoadAppliesDefaultsAndRoutes(t *testing.T) {
 	if cfg.Server.PublishRetry.MaxBackoff != defaultMaxBackoff {
 		t.Fatalf("max backoff = %q", cfg.Server.PublishRetry.MaxBackoff)
 	}
+	if cfg.Server.CircuitBreaker.Enabled {
+		t.Fatal("circuit breaker should default to disabled")
+	}
 	if cfg.Routes["ds"].Topic != "persistent://public/default/ds" {
 		t.Fatalf("topic = %q", cfg.Routes["ds"].Topic)
+	}
+}
+
+func TestLoadAppliesCircuitBreakerDefaultsWhenEnabled(t *testing.T) {
+	path := writeConfig(t, `{
+		"server": {"circuitBreaker": {"enabled": true}},
+		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
+		"routes": {"ds": {"topic":"persistent://public/default/ds"}}
+	}`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.CircuitBreaker.FailureThreshold != defaultCBThreshold {
+		t.Fatalf("failure threshold = %d", cfg.Server.CircuitBreaker.FailureThreshold)
+	}
+	if cfg.Server.CircuitBreaker.OpenDuration != defaultCBOpenDuration {
+		t.Fatalf("open duration = %q", cfg.Server.CircuitBreaker.OpenDuration)
 	}
 }
 
@@ -55,6 +77,22 @@ func TestLoadRejectsInvalidPublishRetry(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsInvalidRouteValidation(t *testing.T) {
+	path := writeConfig(t, `{
+		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
+		"routes": {
+			"ds": {
+				"topic":"persistent://public/default/ds",
+				"validation": {"requiredFields": ["tenantId", ""]}
+			}
+		}
+	}`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected invalid route validation config")
+	}
+}
+
 func TestStoreReloadIfChanged(t *testing.T) {
 	path := writeConfig(t, `{
 		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
@@ -71,9 +109,12 @@ func TestStoreReloadIfChanged(t *testing.T) {
 
 	time.Sleep(20 * time.Millisecond)
 	if err := os.WriteFile(path, []byte(`{
-		"server": {"publishRetry": {"maxAttempts": 5, "initialBackoff": "10ms", "maxBackoff": "50ms"}},
+		"server": {
+			"publishRetry": {"maxAttempts": 5, "initialBackoff": "10ms", "maxBackoff": "50ms"},
+			"circuitBreaker": {"enabled": true, "failureThreshold": 2, "openDuration": "1s"}
+		},
 		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
-		"routes": {"ds": {"topic":"topic-b"}}
+		"routes": {"ds": {"topic":"topic-b", "validation": {"requiredFields": ["tenantId"]}}}
 	}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +131,12 @@ func TestStoreReloadIfChanged(t *testing.T) {
 	}
 	if retry := store.ServerConfig().PublishRetry; retry.MaxAttempts != 5 || retry.InitialBackoff != "10ms" || retry.MaxBackoff != "50ms" {
 		t.Fatalf("reloaded retry = %+v", retry)
+	}
+	if breaker := store.ServerConfig().CircuitBreaker; !breaker.Enabled || breaker.FailureThreshold != 2 || breaker.OpenDuration != "1s" {
+		t.Fatalf("reloaded circuit breaker = %+v", breaker)
+	}
+	if route, ok := store.LookupRoute("ds"); !ok || len(route.Validation.RequiredFields) != 1 || route.Validation.RequiredFields[0] != "tenantId" {
+		t.Fatalf("reloaded route = %+v, ok = %v", route, ok)
 	}
 }
 

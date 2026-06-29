@@ -58,6 +58,11 @@ Each item in `data` is published as a separate Pulsar message. `uuId` is used as
       "maxAttempts": 3,
       "initialBackoff": "100ms",
       "maxBackoff": "2s"
+    },
+    "circuitBreaker": {
+      "enabled": true,
+      "failureThreshold": 20,
+      "openDuration": "10s"
     }
   },
   "pulsar": {
@@ -67,14 +72,48 @@ Each item in `data` is published as a separate Pulsar message. `uuId` is used as
   },
   "routes": {
     "mss_tag_push_event_test": {
-      "topic": "persistent://public/default/mss_tag_push_event_test"
+      "topic": "persistent://public/default/mss_tag_push_event_test",
+      "validation": {
+        "maxBodyBytes": 1048576,
+        "maxBatchItems": 1000,
+        "requiredFields": [
+          "tenantId",
+          "uuId"
+        ]
+      }
     }
   }
 }
 ```
 
-The service polls the config file and reloads route, request limit, and publish retry changes without restarting.
+The service polls the config file and reloads route, request limit, publish retry, circuit breaker, and route validation changes without restarting.
 `server.publishRetry.maxAttempts` includes the first publish attempt. Set it to `1` to disable retries.
+`server.circuitBreaker` opens per topic after consecutive final publish failures and fails fast with `503` for `openDuration`.
+Route `validation` is optional. If a dataSet does not configure it, no per-dataSet body, batch, or required-field validation is applied.
+
+## Metrics
+
+Endpoint:
+
+```http
+GET /metrics
+```
+
+Important metrics:
+
+```text
+sr_forwarder_http_requests_total
+sr_forwarder_rejected_requests_total
+sr_forwarder_publish_success_total
+sr_forwarder_publish_failure_total
+sr_forwarder_publish_retry_total
+sr_forwarder_publish_circuit_open_total
+sr_forwarder_publish_circuit_rejected_total
+sr_forwarder_publish_circuit_open
+sr_forwarder_accepted_items_total
+sr_forwarder_publish_latency_seconds_sum
+sr_forwarder_publish_latency_seconds_count
+```
 
 ## Local Build
 

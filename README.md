@@ -45,4 +45,12 @@ Each item in `data` is published as one Pulsar message. `uuId` is used as the me
 
 ## Hot Reload
 
-Route, request limit, and publish retry changes in the config file are reloaded without restarting the process. Existing requests continue with the config snapshot available when they are handled.
+Route, request limit, publish retry, circuit breaker, and route validation changes in the config file are reloaded without restarting the process. Existing requests continue with the config snapshot available when they are handled.
+
+## Metrics
+
+```http
+GET /metrics
+```
+
+The endpoint exposes Prometheus text metrics for request results, publish success/failure, retries, circuit breaker opens, accepted items, and publish latency.

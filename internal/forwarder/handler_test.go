@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -20,6 +21,18 @@ type staticRoutes map[string]string
 func (s staticRoutes) LookupTopic(dataSet string) (string, bool) {
 	topic, ok := s[dataSet]
 	return topic, ok
+}
+
+type staticRouteEntries map[string]config.RouteEntry
+
+func (s staticRouteEntries) LookupTopic(dataSet string) (string, bool) {
+	route, ok := s[dataSet]
+	return route.Topic, ok
+}
+
+func (s staticRouteEntries) LookupRoute(dataSet string) (config.RouteEntry, bool) {
+	route, ok := s[dataSet]
+	return route, ok
 }
 
 type publishCall struct {
@@ -181,6 +194,152 @@ func TestHandleEventsRetriesPublishFailure(t *testing.T) {
 	}
 	if len(publisher.calls) != 1 {
 		t.Fatalf("publish calls = %d", len(publisher.calls))
+	}
+}
+
+func TestHandleEventsSkipsFieldValidationWhenRouteValidationMissing(t *testing.T) {
+	publisher := &fakePublisher{}
+	handler := NewHandler(
+		staticRouteEntries{"ds": {Topic: "topic"}},
+		publisher,
+		testServerConfig(),
+		log.New(io.Discard, "", 0),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds","data":[{"alertTag":"{}"}]}`)))
+
+	handler.handleEvents(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleEventsAppliesRouteValidation(t *testing.T) {
+	publisher := &fakePublisher{}
+	handler := NewHandler(
+		staticRouteEntries{
+			"ds": {
+				Topic: "topic",
+				Validation: config.RouteValidation{
+					MaxBatchItems:  1,
+					RequiredFields: []string{"tenantId", "uuId"},
+				},
+			},
+		},
+		publisher,
+		testServerConfig(),
+		log.New(io.Discard, "", 0),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds","data":[{"tenantId":"95842832"}]}`)))
+
+	handler.handleEvents(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "uuId is required") {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+	if len(publisher.calls) != 0 {
+		t.Fatalf("publish calls = %d", len(publisher.calls))
+	}
+}
+
+func TestHandleEventsAppliesRouteMaxBodyBytes(t *testing.T) {
+	publisher := &fakePublisher{}
+	handler := NewHandler(
+		staticRouteEntries{
+			"ds": {
+				Topic: "topic",
+				Validation: config.RouteValidation{
+					MaxBodyBytes: 10,
+				},
+			},
+		},
+		publisher,
+		testServerConfig(),
+		log.New(io.Discard, "", 0),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds","data":[{}]}`)))
+
+	handler.handleEvents(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleEventsCircuitBreakerFailsFast(t *testing.T) {
+	publisher := &fakePublisher{err: errors.New("pulsar down")}
+	cfg := testServerConfig()
+	cfg.CircuitBreaker = config.CircuitBreakerConfig{
+		Enabled:          true,
+		FailureThreshold: 1,
+		OpenDuration:     "1m",
+	}
+	handler := NewHandler(
+		staticRoutes{"ds": "topic"},
+		publisher,
+		cfg,
+		log.New(io.Discard, "", 0),
+	)
+	reqBody := []byte(`{"dataSet":"ds","data":[{"uuId":"u1"}]}`)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader(reqBody))
+	handler.handleEvents(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("first status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader(reqBody))
+	handler.handleEvents(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("second status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if publisher.attempts != 1 {
+		t.Fatalf("attempts = %d", publisher.attempts)
+	}
+	if !strings.Contains(rec.Body.String(), "temporarily unavailable") {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
+func TestMetricsEndpointReportsPublishMetrics(t *testing.T) {
+	publisher := &fakePublisher{}
+	handler := NewHandler(
+		staticRoutes{"ds": "topic"},
+		publisher,
+		testServerConfig(),
+		log.New(io.Discard, "", 0),
+	)
+	mux := http.NewServeMux()
+	handler.Register(mux)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds","data":[{"uuId":"u1"}]}`)))
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("metrics status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "sr_forwarder_publish_success_total") {
+		t.Fatalf("metrics body = %s", body)
+	}
+	if !strings.Contains(body, "sr_forwarder_accepted_items_total") {
+		t.Fatalf("metrics body = %s", body)
 	}
 }
 
