@@ -31,12 +31,10 @@ The default image is:
 lengdanlexin/http-pulsar-router
 ```
 
-Common pushed tags for `main` pushes:
+Pushed tag for `main` pushes:
 
 ```text
 latest
-main
-sha-<commit>
 ```
 
 For `v*` tag pushes, only the original Git tag is pushed:
