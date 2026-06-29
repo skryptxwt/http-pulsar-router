@@ -47,6 +47,14 @@ func (s *Store) LookupTopic(dataSet string) (string, bool) {
 	return route.Topic, true
 }
 
+func (s *Store) ServerConfig() ServerConfig {
+	cfg := s.Snapshot()
+	if cfg == nil {
+		return ServerConfig{}.WithDefaults()
+	}
+	return cfg.Server.WithDefaults()
+}
+
 func (s *Store) ReloadIfChanged() (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

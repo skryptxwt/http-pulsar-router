@@ -18,6 +18,9 @@ const (
 	defaultConnectionTO    = "5s"
 	defaultMaxBodyBytes    = int64(1 << 20)
 	defaultMaxBatchItems   = 1000
+	defaultRetryAttempts   = 3
+	defaultInitialBackoff  = "100ms"
+	defaultMaxBackoff      = "2s"
 )
 
 type Config struct {
@@ -27,12 +30,19 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Addr            string `json:"addr"`
-	ReadTimeout     string `json:"readTimeout"`
-	WriteTimeout    string `json:"writeTimeout"`
-	ShutdownTimeout string `json:"shutdownTimeout"`
-	MaxBodyBytes    int64  `json:"maxBodyBytes"`
-	MaxBatchItems   int    `json:"maxBatchItems"`
+	Addr            string      `json:"addr"`
+	ReadTimeout     string      `json:"readTimeout"`
+	WriteTimeout    string      `json:"writeTimeout"`
+	ShutdownTimeout string      `json:"shutdownTimeout"`
+	MaxBodyBytes    int64       `json:"maxBodyBytes"`
+	MaxBatchItems   int         `json:"maxBatchItems"`
+	PublishRetry    RetryConfig `json:"publishRetry"`
+}
+
+type RetryConfig struct {
+	MaxAttempts    int    `json:"maxAttempts"`
+	InitialBackoff string `json:"initialBackoff"`
+	MaxBackoff     string `json:"maxBackoff"`
 }
 
 type PulsarConfig struct {
@@ -74,6 +84,9 @@ func (c *Config) Validate() error {
 	if c.Server.MaxBatchItems <= 0 {
 		return errors.New("server.maxBatchItems must be positive")
 	}
+	if c.Server.PublishRetry.MaxAttempts <= 0 {
+		return errors.New("server.publishRetry.maxAttempts must be positive")
+	}
 	if _, err := time.ParseDuration(c.Server.ReadTimeout); err != nil {
 		return fmt.Errorf("server.readTimeout: %w", err)
 	}
@@ -82,6 +95,23 @@ func (c *Config) Validate() error {
 	}
 	if _, err := time.ParseDuration(c.Server.ShutdownTimeout); err != nil {
 		return fmt.Errorf("server.shutdownTimeout: %w", err)
+	}
+	initialBackoff, err := time.ParseDuration(c.Server.PublishRetry.InitialBackoff)
+	if err != nil {
+		return fmt.Errorf("server.publishRetry.initialBackoff: %w", err)
+	}
+	if initialBackoff <= 0 {
+		return errors.New("server.publishRetry.initialBackoff must be positive")
+	}
+	maxBackoff, err := time.ParseDuration(c.Server.PublishRetry.MaxBackoff)
+	if err != nil {
+		return fmt.Errorf("server.publishRetry.maxBackoff: %w", err)
+	}
+	if maxBackoff <= 0 {
+		return errors.New("server.publishRetry.maxBackoff must be positive")
+	}
+	if maxBackoff < initialBackoff {
+		return errors.New("server.publishRetry.maxBackoff must be greater than or equal to initialBackoff")
 	}
 	if strings.TrimSpace(c.Pulsar.URL) == "" {
 		return errors.New("pulsar.url is required")
@@ -107,30 +137,54 @@ func (c *Config) Validate() error {
 }
 
 func (c *Config) applyDefaults() {
-	if c.Server.Addr == "" {
-		c.Server.Addr = defaultAddr
-	}
-	if c.Server.ReadTimeout == "" {
-		c.Server.ReadTimeout = defaultReadTimeout
-	}
-	if c.Server.WriteTimeout == "" {
-		c.Server.WriteTimeout = defaultWriteTimeout
-	}
-	if c.Server.ShutdownTimeout == "" {
-		c.Server.ShutdownTimeout = defaultShutdownTimeout
-	}
-	if c.Server.MaxBodyBytes == 0 {
-		c.Server.MaxBodyBytes = defaultMaxBodyBytes
-	}
-	if c.Server.MaxBatchItems == 0 {
-		c.Server.MaxBatchItems = defaultMaxBatchItems
-	}
+	c.Server = c.Server.WithDefaults()
 	if c.Pulsar.OperationTimeout == "" {
 		c.Pulsar.OperationTimeout = defaultOperationTO
 	}
 	if c.Pulsar.ConnectionTimeout == "" {
 		c.Pulsar.ConnectionTimeout = defaultConnectionTO
 	}
+}
+
+func (s ServerConfig) WithDefaults() ServerConfig {
+	if s.Addr == "" {
+		s.Addr = defaultAddr
+	}
+	if s.ReadTimeout == "" {
+		s.ReadTimeout = defaultReadTimeout
+	}
+	if s.WriteTimeout == "" {
+		s.WriteTimeout = defaultWriteTimeout
+	}
+	if s.ShutdownTimeout == "" {
+		s.ShutdownTimeout = defaultShutdownTimeout
+	}
+	if s.MaxBodyBytes == 0 {
+		s.MaxBodyBytes = defaultMaxBodyBytes
+	}
+	if s.MaxBatchItems == 0 {
+		s.MaxBatchItems = defaultMaxBatchItems
+	}
+	if s.PublishRetry.MaxAttempts == 0 {
+		s.PublishRetry.MaxAttempts = defaultRetryAttempts
+	}
+	if s.PublishRetry.InitialBackoff == "" {
+		s.PublishRetry.InitialBackoff = defaultInitialBackoff
+	}
+	if s.PublishRetry.MaxBackoff == "" {
+		s.PublishRetry.MaxBackoff = defaultMaxBackoff
+	}
+	return s
+}
+
+func (r RetryConfig) InitialBackoffDuration() time.Duration {
+	d, _ := time.ParseDuration(r.InitialBackoff)
+	return d
+}
+
+func (r RetryConfig) MaxBackoffDuration() time.Duration {
+	d, _ := time.ParseDuration(r.MaxBackoff)
+	return d
 }
 
 func (s ServerConfig) ReadTimeoutDuration() time.Duration {

@@ -30,16 +30,27 @@ type publishCall struct {
 }
 
 type fakePublisher struct {
-	mu    sync.Mutex
-	err   error
-	calls []publishCall
+	mu                   sync.Mutex
+	err                  error
+	failRemaining        int
+	recoverAfterFailures bool
+	attempts             int
+	calls                []publishCall
 }
 
 func (f *fakePublisher) Publish(_ context.Context, topic string, key string, payload []byte, properties map[string]string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.attempts++
 	if f.err != nil {
-		return f.err
+		if !f.recoverAfterFailures {
+			return f.err
+		}
+		if f.failRemaining > 0 {
+			f.failRemaining--
+			return f.err
+		}
+		f.err = nil
 	}
 	copiedProps := make(map[string]string, len(properties))
 	for k, v := range properties {
@@ -56,12 +67,24 @@ func (f *fakePublisher) Publish(_ context.Context, topic string, key string, pay
 
 func (f *fakePublisher) Close() error { return nil }
 
+func testServerConfig() config.ServerConfig {
+	return config.ServerConfig{
+		MaxBodyBytes:  4096,
+		MaxBatchItems: 10,
+		PublishRetry: config.RetryConfig{
+			MaxAttempts:    1,
+			InitialBackoff: "1ms",
+			MaxBackoff:     "1ms",
+		},
+	}
+}
+
 func TestHandleEventsPublishesEachItem(t *testing.T) {
 	publisher := &fakePublisher{}
 	handler := NewHandler(
 		staticRoutes{"mss_tag_push_event_test": "persistent://public/default/mss_tag_push_event_test"},
 		publisher,
-		config.ServerConfig{MaxBodyBytes: 4096, MaxBatchItems: 10},
+		testServerConfig(),
 		log.New(io.Discard, "", 0),
 	)
 
@@ -102,7 +125,7 @@ func TestRegisterSupportsOuterAlertAddPath(t *testing.T) {
 	handler := NewHandler(
 		staticRoutes{"mss_tag_push_event_test": "persistent://public/default/mss_tag_push_event_test"},
 		publisher,
-		config.ServerConfig{MaxBodyBytes: 4096, MaxBatchItems: 10},
+		testServerConfig(),
 		log.New(io.Discard, "", 0),
 	)
 	mux := http.NewServeMux()
@@ -125,8 +148,44 @@ func TestRegisterSupportsOuterAlertAddPath(t *testing.T) {
 	}
 }
 
+func TestHandleEventsRetriesPublishFailure(t *testing.T) {
+	publisher := &fakePublisher{
+		err:                  errors.New("temporary pulsar error"),
+		failRemaining:        2,
+		recoverAfterFailures: true,
+	}
+	handler := NewHandler(
+		staticRoutes{"ds": "topic"},
+		publisher,
+		config.ServerConfig{
+			MaxBodyBytes:  4096,
+			MaxBatchItems: 10,
+			PublishRetry: config.RetryConfig{
+				MaxAttempts:    3,
+				InitialBackoff: "1ms",
+				MaxBackoff:     "2ms",
+			},
+		},
+		log.New(io.Discard, "", 0),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds","data":[{"uuId":"u1"}]}`)))
+
+	handler.handleEvents(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if publisher.attempts != 3 {
+		t.Fatalf("attempts = %d", publisher.attempts)
+	}
+	if len(publisher.calls) != 1 {
+		t.Fatalf("publish calls = %d", len(publisher.calls))
+	}
+}
+
 func TestHandleEventsRejectsUnknownDataSet(t *testing.T) {
-	handler := NewHandler(staticRoutes{}, &fakePublisher{}, config.ServerConfig{MaxBodyBytes: 4096, MaxBatchItems: 10}, log.New(io.Discard, "", 0))
+	handler := NewHandler(staticRoutes{}, &fakePublisher{}, testServerConfig(), log.New(io.Discard, "", 0))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"missing","data":[{}]}`)))
 
@@ -138,7 +197,7 @@ func TestHandleEventsRejectsUnknownDataSet(t *testing.T) {
 }
 
 func TestHandleEventsRejectsMalformedJSON(t *testing.T) {
-	handler := NewHandler(staticRoutes{}, &fakePublisher{}, config.ServerConfig{MaxBodyBytes: 4096, MaxBatchItems: 10}, log.New(io.Discard, "", 0))
+	handler := NewHandler(staticRoutes{}, &fakePublisher{}, testServerConfig(), log.New(io.Discard, "", 0))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":`)))
 
@@ -154,7 +213,7 @@ func TestHandleEventsStopsOnPublishError(t *testing.T) {
 	handler := NewHandler(
 		staticRoutes{"ds": "topic"},
 		publisher,
-		config.ServerConfig{MaxBodyBytes: 4096, MaxBatchItems: 10},
+		testServerConfig(),
 		log.New(io.Discard, "", 0),
 	)
 	rec := httptest.NewRecorder()

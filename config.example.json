@@ -5,7 +5,12 @@
     "writeTimeout": "10s",
     "shutdownTimeout": "15s",
     "maxBodyBytes": 1048576,
-    "maxBatchItems": 1000
+    "maxBatchItems": 1000,
+    "publishRetry": {
+      "maxAttempts": 3,
+      "initialBackoff": "100ms",
+      "maxBackoff": "2s"
+    }
   },
   "pulsar": {
     "url": "pulsar://127.0.0.1:6650",
@@ -19,5 +24,4 @@
     }
   }
 }
-
 

@@ -53,7 +53,12 @@ Each item in `data` is published as a separate Pulsar message. `uuId` is used as
     "writeTimeout": "10s",
     "shutdownTimeout": "15s",
     "maxBodyBytes": 1048576,
-    "maxBatchItems": 1000
+    "maxBatchItems": 1000,
+    "publishRetry": {
+      "maxAttempts": 3,
+      "initialBackoff": "100ms",
+      "maxBackoff": "2s"
+    }
   },
   "pulsar": {
     "url": "pulsar://127.0.0.1:6650",
@@ -68,7 +73,8 @@ Each item in `data` is published as a separate Pulsar message. `uuId` is used as
 }
 ```
 
-The service polls the config file and reloads route changes without restarting.
+The service polls the config file and reloads route, request limit, and publish retry changes without restarting.
+`server.publishRetry.maxAttempts` includes the first publish attempt. Set it to `1` to disable retries.
 
 ## Local Build
 

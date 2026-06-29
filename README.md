@@ -45,4 +45,4 @@ Each item in `data` is published as one Pulsar message. `uuId` is used as the me
 
 ## Hot Reload
 
-Route changes in the config file are reloaded without restarting the process. Existing requests continue with the route snapshot available when they are handled.
+Route, request limit, and publish retry changes in the config file are reloaded without restarting the process. Existing requests continue with the config snapshot available when they are handled.

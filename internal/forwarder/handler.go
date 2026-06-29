@@ -1,6 +1,7 @@
 package forwarder
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"sr-forwarder/internal/config"
 )
@@ -42,6 +44,7 @@ func NewHandler(routes RouteLookup, publisher Publisher, cfg config.ServerConfig
 	if logger == nil {
 		logger = log.Default()
 	}
+	cfg = cfg.WithDefaults()
 	return &Handler{
 		routes:    routes,
 		publisher: publisher,
@@ -72,7 +75,8 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := decodeEventRequest(w, r, h.cfg.MaxBodyBytes)
+	cfg := h.serverConfig()
+	req, err := decodeEventRequest(w, r, cfg.MaxBodyBytes)
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, errBodyTooLarge) {
@@ -91,7 +95,7 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, responseBody{OK: false, Error: "data must not be empty"})
 		return
 	}
-	if len(req.Data) > h.cfg.MaxBatchItems {
+	if len(req.Data) > cfg.MaxBatchItems {
 		writeJSON(w, http.StatusRequestEntityTooLarge, responseBody{OK: false, Error: "data item count exceeds limit"})
 		return
 	}
@@ -116,7 +120,7 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 			props["tenantId"] = meta.TenantID
 		}
 
-		if err := h.publisher.Publish(r.Context(), topic, meta.UUID, item, props); err != nil {
+		if err := h.publishWithRetry(r.Context(), cfg.PublishRetry, topic, meta.UUID, item, props); err != nil {
 			h.logger.Printf("publish failed dataSet=%s topic=%s accepted=%d err=%v", req.DataSet, topic, accepted, err)
 			writeJSON(w, http.StatusServiceUnavailable, responseBody{
 				OK:       false,
@@ -136,6 +140,62 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		DataSet:  req.DataSet,
 		Topic:    topic,
 	})
+}
+
+func (h *Handler) serverConfig() config.ServerConfig {
+	if lookup, ok := h.routes.(ServerConfigLookup); ok {
+		return lookup.ServerConfig()
+	}
+	return h.cfg
+}
+
+func (h *Handler) publishWithRetry(ctx context.Context, retry config.RetryConfig, topic string, key string, payload []byte, properties map[string]string) error {
+	initialBackoff := retry.InitialBackoffDuration()
+	maxBackoff := retry.MaxBackoffDuration()
+
+	var err error
+	for attempt := 1; attempt <= retry.MaxAttempts; attempt++ {
+		err = h.publisher.Publish(ctx, topic, key, payload, properties)
+		if err == nil {
+			return nil
+		}
+		if attempt == retry.MaxAttempts {
+			return err
+		}
+
+		backoff := retryBackoff(initialBackoff, maxBackoff, attempt)
+		h.logger.Printf("publish retry scheduled topic=%s attempt=%d maxAttempts=%d backoff=%s err=%v", topic, attempt+1, retry.MaxAttempts, backoff, err)
+		if err := sleepContext(ctx, backoff); err != nil {
+			return err
+		}
+	}
+	return err
+}
+
+func retryBackoff(initialBackoff time.Duration, maxBackoff time.Duration, failedAttempts int) time.Duration {
+	backoff := initialBackoff
+	for i := 1; i < failedAttempts; i++ {
+		if backoff >= maxBackoff/2 {
+			return maxBackoff
+		}
+		backoff *= 2
+	}
+	if backoff > maxBackoff {
+		return maxBackoff
+	}
+	return backoff
+}
+
+func sleepContext(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 var errBodyTooLarge = errors.New("request body too large")
