@@ -10,7 +10,7 @@ helm upgrade --install http-pulsar-router ./charts/http-pulsar-router \
 
 ## Configure
 
-Override only the deployment-specific settings in a values file. Runtime defaults such as timeouts, retry, circuit breaker, and validation do not need to be repeated unless you want to override them.
+Keep stable deployment choices in a small values file, and pass environment-specific values such as Pulsar address and temporary tokens with `--set-string`.
 
 ```yaml
 replicaCount: 3
@@ -26,22 +26,17 @@ pulsarAuth:
   secretName: pulsar-auth-secret-key
   secretKey: adminToken
   mountPath: /app/secrets/pulsar
-  tokenBase64: ""
 
 config:
   server:
     auth:
       enabled: true
-      bearerToken: ""
-      bearerTokenFile: ""
   pulsar:
-    url: pulsar://10.72.9.83:32655
     authTokenFile: /app/secrets/pulsar/token
   routes:
     mss_tag_push_event_test:
       topic: persistent://public/default/mss_tag_push_event_test
       auth:
-        bearerToken: ""
         bearerTokenFile: ""
 ```
 
@@ -50,5 +45,8 @@ Apply:
 ```bash
 helm upgrade --install http-pulsar-router ./charts/http-pulsar-router \
   -n sr-forwarder \
-  -f values-prod.yaml
+  -f values-prod.yaml \
+  --set-string config.pulsar.url='pulsar://10.72.9.83:32655' \
+  --set-string pulsarAuth.tokenBase64='...' \
+  --set-string config.routes.mss_tag_push_event_test.auth.bearerToken='...'
 ```
