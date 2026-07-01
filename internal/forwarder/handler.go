@@ -40,6 +40,8 @@ const unknownDataSetLabel = "unknown"
 
 type responseBody struct {
 	OK        bool   `json:"ok"`
+	Success   bool   `json:"success"`
+	Code      int    `json:"code"`
 	Error     string `json:"error,omitempty"`
 	Accepted  int    `json:"accepted,omitempty"`
 	DataSet   string `json:"dataSet,omitempty"`
@@ -470,6 +472,13 @@ func parseItemMetas(items []json.RawMessage) ([]itemMeta, int, error) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, body responseBody) {
+	if status >= http.StatusOK && status < http.StatusMultipleChoices && body.OK {
+		body.Success = true
+		body.Code = 0
+	} else {
+		body.Success = false
+		body.Code = 1
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)

@@ -137,6 +137,13 @@ func TestHandleEventsPublishesEachItem(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
+	var response responseBody
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if !response.OK || !response.Success || response.Code != 0 {
+		t.Fatalf("response = %+v", response)
+	}
 	if len(publisher.calls) != 2 {
 		t.Fatalf("publish calls = %d", len(publisher.calls))
 	}
@@ -509,6 +516,9 @@ func TestHandleEventsStopsOnPublishError(t *testing.T) {
 	}
 	if body.Accepted != 0 {
 		t.Fatalf("accepted = %d", body.Accepted)
+	}
+	if body.OK || body.Success || body.Code != 1 {
+		t.Fatalf("body = %+v", body)
 	}
 }
 
