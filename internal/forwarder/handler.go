@@ -117,6 +117,14 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
+
+	if !h.authorized(r, cfg.Auth) {
+		h.logger.Printf("request rejected reason=unauthorized remote=%s", r.RemoteAddr)
+		w.Header().Set("WWW-Authenticate", "Bearer")
+		h.writeEventJSON(w, http.StatusUnauthorized, responseBody{OK: false, Error: "unauthorized"}, unknownDataSetLabel, "unauthorized")
+		return
+	}
+
 	req, bodyBytes, err := decodeEventRequest(w, r, cfg.MaxBodyBytes)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -149,13 +157,6 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if len(req.Data) > cfg.MaxBatchItems {
 		h.logger.Printf("request rejected dataSet=%s reason=max_batch_items limit=%d items=%d", req.DataSet, cfg.MaxBatchItems, len(req.Data))
 		h.writeEventJSON(w, http.StatusRequestEntityTooLarge, responseBody{OK: false, Error: "data item count exceeds limit"}, req.DataSet, "max_batch_items")
-		return
-	}
-
-	if !h.authorized(r, cfg.Auth, route.Auth) {
-		h.logger.Printf("request rejected dataSet=%s topic=%s reason=unauthorized remote=%s", req.DataSet, topic, r.RemoteAddr)
-		w.Header().Set("WWW-Authenticate", "Bearer")
-		h.writeEventJSON(w, http.StatusUnauthorized, responseBody{OK: false, Error: "unauthorized", DataSet: req.DataSet, Topic: topic}, req.DataSet, "unauthorized")
 		return
 	}
 
@@ -206,7 +207,7 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 			}
 			h.metrics.Inc("sr_forwarder_publish_failure_total", publishLabels(req.DataSet, topic))
 			h.metrics.ObserveDuration("sr_forwarder_publish_latency_seconds", publishLabels(req.DataSet, topic), time.Since(start))
-			h.logger.Printf("publish failed dataSet=%s topic=%s tenantId=%s uuId=%s accepted=%d attemptMax=%d circuitOpened=%t err=%v", req.DataSet, topic, meta.TenantID, meta.UUID, accepted, cfg.PublishRetry.MaxAttempts, opened, err)
+			h.logger.Printf("publish failed dataSet=%s topic=%s tenantId=%s uuId=%s accepted=%d attemptMax=%d circuitOpened=%t err=%v", req.DataSet, topic, redactID(meta.TenantID), redactID(meta.UUID), accepted, cfg.PublishRetry.MaxAttempts, opened, err)
 			h.writeEventJSON(w, http.StatusServiceUnavailable, responseBody{
 				OK:       false,
 				Error:    "publish to pulsar failed",
@@ -246,19 +247,19 @@ func (h *Handler) topics() []string {
 	return nil
 }
 
-func (h *Handler) authorized(r *http.Request, globalAuth config.AuthConfig, routeAuth config.BearerTokenConfig) bool {
+func (h *Handler) authorized(r *http.Request, globalAuth config.AuthConfig) bool {
 	if !globalAuth.Enabled {
 		return true
 	}
 
 	tokenAuth := globalAuth.BearerTokenConfig
-	if !authHasToken(tokenAuth) {
-		tokenAuth = routeAuth
-	}
-
 	expected, err := bearerToken(tokenAuth)
 	if err != nil {
 		h.logger.Printf("auth token load failed err=%v", err)
+		return false
+	}
+	if expected == "" {
+		h.logger.Print("auth token is empty")
 		return false
 	}
 	actual := strings.TrimSpace(r.Header.Get("Authorization"))
@@ -269,10 +270,6 @@ func (h *Handler) authorized(r *http.Request, globalAuth config.AuthConfig, rout
 
 	actualToken := strings.TrimSpace(actual[len(prefix):])
 	return subtle.ConstantTimeCompare([]byte(actualToken), []byte(expected)) == 1
-}
-
-func authHasToken(cfg config.BearerTokenConfig) bool {
-	return strings.TrimSpace(cfg.BearerToken) != "" || strings.TrimSpace(cfg.BearerTokenFile) != ""
 }
 
 func bearerToken(cfg config.BearerTokenConfig) (string, error) {
@@ -310,12 +307,23 @@ func (h *Handler) publishWithRetry(ctx context.Context, retry config.RetryConfig
 
 		backoff := retryBackoff(initialBackoff, maxBackoff, attempt)
 		h.metrics.Inc("sr_forwarder_publish_retry_total", publishLabels(dataSet, topic))
-		h.logger.Printf("publish retry scheduled dataSet=%s topic=%s tenantId=%s uuId=%s attempt=%d maxAttempts=%d backoff=%s err=%v", dataSet, topic, meta.TenantID, meta.UUID, attempt+1, retry.MaxAttempts, backoff, err)
+		h.logger.Printf("publish retry scheduled dataSet=%s topic=%s tenantId=%s uuId=%s attempt=%d maxAttempts=%d backoff=%s err=%v", dataSet, topic, redactID(meta.TenantID), redactID(meta.UUID), attempt+1, retry.MaxAttempts, backoff, err)
 		if err := sleepContext(ctx, backoff); err != nil {
 			return err
 		}
 	}
 	return err
+}
+
+func redactID(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if len(value) <= 6 {
+		return "***"
+	}
+	return value[:3] + "***" + value[len(value)-3:]
 }
 
 func isContextDone(err error) bool {

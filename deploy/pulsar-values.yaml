@@ -22,6 +22,10 @@ config:
     shutdownTimeout: "15s"
     maxBodyBytes: 1048576
     maxBatchItems: 1000
+    auth:
+      enabled: true
+      bearerToken: ""
+      bearerTokenFile: ""
   pulsar:
     url: "pulsar://10.72.9.83:32655"
     operationTimeout: "5s"

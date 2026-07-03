@@ -14,6 +14,14 @@ HTTP JSON -> dataSet route -> Pulsar topic -> isolated ST service -> SR
 go run ./cmd/sr-forwarder -config ./config.example.json
 ```
 
+## Build Checks
+
+```powershell
+./scripts/security-check.ps1
+```
+
+The Docker image workflow runs the same checks before building: `gofmt`, `go vet`, `go test`, `go test -race`, hardened `go build`, `govulncheck`, Helm template rendering, and a Trivy filesystem scan.
+
 ## API
 
 ```http
@@ -34,7 +42,7 @@ When `server.auth.enabled` is `true`, include:
 Authorization: Bearer <token>
 ```
 
-If `server.auth.bearerToken` or `server.auth.bearerTokenFile` is configured, it is used globally. Otherwise the token is resolved from the matched `routes.<dataSet>.auth` config.
+`server.auth.enabled` defaults to `true`. Configure `server.auth.bearerToken` or `server.auth.bearerTokenFile` globally; per-route auth is not used for request authorization.
 
 ```json
 {

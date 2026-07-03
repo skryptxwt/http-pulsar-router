@@ -251,6 +251,9 @@ func TestHandleEventsRequiresBearerTokenWhenAuthEnabled(t *testing.T) {
 	if rec.Header().Get("WWW-Authenticate") != "Bearer" {
 		t.Fatalf("www-authenticate = %q", rec.Header().Get("WWW-Authenticate"))
 	}
+	if strings.Contains(rec.Body.String(), "ds") || strings.Contains(rec.Body.String(), "topic") {
+		t.Fatalf("unauthorized body leaked route data: %s", rec.Body.String())
+	}
 
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader(body))
@@ -272,7 +275,7 @@ func TestHandleEventsRequiresBearerTokenWhenAuthEnabled(t *testing.T) {
 	}
 }
 
-func TestHandleEventsUsesRouteBearerTokenWhenGlobalTokenMissing(t *testing.T) {
+func TestHandleEventsRejectsRouteBearerTokenWhenGlobalTokenMissing(t *testing.T) {
 	publisher := &fakePublisher{}
 	cfg := testServerConfig()
 	cfg.Auth = config.AuthConfig{Enabled: true}
@@ -304,14 +307,11 @@ func TestHandleEventsUsesRouteBearerTokenWhenGlobalTokenMissing(t *testing.T) {
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds-a","data":[{"uuId":"u1"}]}`)))
 	req.Header.Set("Authorization", "Bearer token-a")
 	handler.handleEvents(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("valid route token status = %d, body = %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("route token status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if len(publisher.calls) != 1 {
+	if len(publisher.calls) != 0 {
 		t.Fatalf("publish calls = %d", len(publisher.calls))
-	}
-	if publisher.calls[0].topic != "topic-a" {
-		t.Fatalf("topic = %q", publisher.calls[0].topic)
 	}
 }
 
@@ -519,6 +519,29 @@ func TestHandleEventsStopsOnPublishError(t *testing.T) {
 	}
 	if body.OK || body.Success || body.Code != 1 {
 		t.Fatalf("body = %+v", body)
+	}
+}
+
+func TestHandleEventsRedactsTenantAndUUIDInPublishLogs(t *testing.T) {
+	var logs bytes.Buffer
+	publisher := &fakePublisher{err: errors.New("pulsar down")}
+	handler := NewHandler(
+		staticRoutes{"ds": "topic"},
+		publisher,
+		testServerConfig(),
+		log.New(&logs, "", 0),
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds","data":[{"tenantId":"95842832","uuId":"incident-7e4ab624-cf12-4878-bf4d-4091e62d1f51"}]}`)))
+
+	handler.handleEvents(rec, req)
+
+	body := logs.String()
+	if strings.Contains(body, "95842832") || strings.Contains(body, "incident-7e4ab624-cf12-4878-bf4d-4091e62d1f51") {
+		t.Fatalf("log leaked sensitive ids: %s", body)
+	}
+	if !strings.Contains(body, "958***832") || !strings.Contains(body, "inc***f51") {
+		t.Fatalf("log did not include redacted ids: %s", body)
 	}
 }
 

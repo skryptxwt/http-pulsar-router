@@ -12,6 +12,8 @@ helm upgrade --install http-pulsar-router ./charts/http-pulsar-router \
 
 Keep only environment-specific values in a small values file.
 When `pulsarAuth.enabled=true`, the chart automatically sets `config.pulsar.authTokenFile` to `<pulsarAuth.mountPath>/token` unless it is explicitly overridden.
+The HTTP service defaults to `ClusterIP`. `ingress.enabled`, `ingress.tls`, and `networkPolicy.enabled` are off by default.
+`config.server.auth.enabled` defaults to `true`; Helm rendering fails unless a global `config.server.auth.bearerToken` or `bearerTokenFile` is set.
 
 ```yaml
 replicaCount: 3
@@ -27,10 +29,23 @@ config:
   server:
     auth:
       enabled: true
+      bearerToken: "..."
   routes:
     mss_tag_push_event_test:
-      auth:
-        bearerToken: "..."
+      topic: persistent://public/default/mss_tag_push_event_test
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: router.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: router-example-com-tls
+      hosts:
+        - router.example.com
 ```
 
 Apply:

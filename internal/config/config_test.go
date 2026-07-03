@@ -9,6 +9,7 @@ import (
 
 func TestLoadAppliesDefaultsAndRoutes(t *testing.T) {
 	path := writeConfig(t, `{
+		"server": {"auth": {"enabled": false}},
 		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
 		"routes": {"ds": {"topic":"persistent://public/default/ds"}}
 	}`)
@@ -48,7 +49,7 @@ func TestLoadAppliesDefaultsAndRoutes(t *testing.T) {
 
 func TestLoadAppliesCircuitBreakerDefaultsWhenEnabled(t *testing.T) {
 	path := writeConfig(t, `{
-		"server": {"circuitBreaker": {"enabled": true}},
+		"server": {"auth": {"enabled": false}, "circuitBreaker": {"enabled": true}},
 		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
 		"routes": {"ds": {"topic":"persistent://public/default/ds"}}
 	}`)
@@ -68,6 +69,7 @@ func TestLoadAppliesCircuitBreakerDefaultsWhenEnabled(t *testing.T) {
 func TestLoadRejectsInvalidPublishRetry(t *testing.T) {
 	path := writeConfig(t, `{
 		"server": {
+			"auth": {"enabled": false},
 			"publishRetry": {
 				"maxAttempts": 3,
 				"initialBackoff": "2s",
@@ -95,7 +97,7 @@ func TestLoadRejectsEnabledAuthWithoutToken(t *testing.T) {
 	}
 }
 
-func TestLoadAllowsEnabledAuthWithRouteToken(t *testing.T) {
+func TestLoadRejectsEnabledAuthWithOnlyRouteToken(t *testing.T) {
 	path := writeConfig(t, `{
 		"server": {"auth": {"enabled": true}},
 		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
@@ -107,17 +109,30 @@ func TestLoadAllowsEnabledAuthWithRouteToken(t *testing.T) {
 		}
 	}`)
 
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected enabled auth with only route token to fail")
+	}
+}
+
+func TestLoadAllowsEnabledAuthWithGlobalToken(t *testing.T) {
+	path := writeConfig(t, `{
+		"server": {"auth": {"enabled": true, "bearerToken": "global-token"}},
+		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
+		"routes": {"ds": {"topic":"persistent://public/default/ds"}}
+	}`)
+
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Routes["ds"].Auth.BearerToken != "route-token" {
-		t.Fatalf("route token = %q", cfg.Routes["ds"].Auth.BearerToken)
+	if !cfg.Server.Auth.Enabled || cfg.Server.Auth.BearerToken != "global-token" {
+		t.Fatalf("auth = %+v", cfg.Server.Auth)
 	}
 }
 
 func TestLoadRejectsInvalidRouteValidation(t *testing.T) {
 	path := writeConfig(t, `{
+		"server": {"auth": {"enabled": false}},
 		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
 		"routes": {
 			"ds": {
@@ -134,6 +149,7 @@ func TestLoadRejectsInvalidRouteValidation(t *testing.T) {
 
 func TestStoreReloadIfChanged(t *testing.T) {
 	path := writeConfig(t, `{
+		"server": {"auth": {"enabled": false}},
 		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
 		"routes": {"ds": {"topic":"topic-a"}}
 	}`)
@@ -149,6 +165,7 @@ func TestStoreReloadIfChanged(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	if err := os.WriteFile(path, []byte(`{
 		"server": {
+			"auth": {"enabled": false},
 			"publishRetry": {"maxAttempts": 5, "initialBackoff": "10ms", "maxBackoff": "50ms"},
 			"circuitBreaker": {"enabled": true, "failureThreshold": 2, "openDuration": "1s"}
 		},

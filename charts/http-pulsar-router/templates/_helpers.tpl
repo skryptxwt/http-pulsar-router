@@ -41,6 +41,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{- define "http-pulsar-router.effectiveConfig" -}}
 {{- $config := deepCopy .Values.config -}}
+{{- $server := default dict $config.server -}}
+{{- $auth := default dict $server.auth -}}
+{{- if and (default false $auth.enabled) (empty $auth.bearerToken) (empty $auth.bearerTokenFile) -}}
+{{- fail "config.server.auth.bearerToken or bearerTokenFile is required when config.server.auth.enabled=true" -}}
+{{- end -}}
 {{- if and .Values.pulsarAuth.enabled (empty $config.pulsar.authTokenFile) -}}
 {{- $_ := set $config.pulsar "authTokenFile" (printf "%s/token" (trimSuffix "/" .Values.pulsarAuth.mountPath)) -}}
 {{- end -}}

@@ -23,6 +23,10 @@ It pushes images when:
 - A `v*` tag is pushed, such as `v0.1.0`.
 - The workflow is run manually with `workflow_dispatch`.
 
+## Build Gates
+
+Before Docker build or push, the workflow runs `scripts/security-check.ps1` and a Trivy filesystem scan. Any Go compile/test failure, `govulncheck` finding, Helm render error, or high/critical filesystem vulnerability fails the workflow.
+
 ## Image
 
 The default image is:

@@ -9,8 +9,8 @@
     "maxBodyBytes": 1048576,
     "maxBatchItems": 1000,
     "auth": {
-      "enabled": false,
-      "bearerToken": "",
+      "enabled": true,
+      "bearerToken": "change-me",
       "bearerTokenFile": ""
     },
     "publishRetry": {
@@ -33,10 +33,6 @@
   "routes": {
     "mss_tag_push_event_test": {
       "topic": "persistent://public/default/mss_tag_push_event_test",
-      "auth": {
-        "bearerToken": "",
-        "bearerTokenFile": ""
-      },
       "validation": {
         "maxBodyBytes": 1048576,
         "maxBatchItems": 1000,

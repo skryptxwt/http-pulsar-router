@@ -1,5 +1,7 @@
 bin/
 dist/
+.gocache/
+.gomodcache/
 coverage.out
 *.test
 *.log

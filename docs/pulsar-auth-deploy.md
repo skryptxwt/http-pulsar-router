@@ -13,6 +13,7 @@ helm upgrade --install http-pulsar-router ./charts/http-pulsar-router \
   -n sr-forwarder \
   --create-namespace \
   -f deploy/pulsar-values.yaml \
+  --set-string config.server.auth.bearerToken='PASTE_HTTP_BEARER_TOKEN_HERE' \
   --set-string pulsarAuth.tokenBase64='PASTE_ADMIN_TOKEN_BASE64_HERE'
 ```
 
@@ -48,9 +49,13 @@ pulsarAuth:
   secretKey: adminToken
 
 config:
+  server:
+    auth:
+      enabled: true
+      bearerToken: ""
   pulsar:
     url: pulsar://10.72.9.83:32655
     authTokenFile: /app/secrets/pulsar/token
 ```
 
-Do not commit real tokens into Git. Pass them at deploy time with `--set-string`, or keep them in an untracked local values file.
+Do not commit real HTTP or Pulsar tokens into Git. Pass them at deploy time with `--set-string`, or keep them in an untracked local values file.

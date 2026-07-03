@@ -2,6 +2,7 @@ package pulsarpub
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"sync"
@@ -11,9 +12,12 @@ import (
 	"sr-forwarder/internal/config"
 )
 
+var ErrPublisherClosed = errors.New("publisher is closed")
+
 type Publisher struct {
 	client    pulsar.Client
 	mu        sync.Mutex
+	closed    bool
 	producers map[string]*producerSlot
 }
 
@@ -60,6 +64,11 @@ func (p *Publisher) Publish(ctx context.Context, topic string, key string, paylo
 
 func (p *Publisher) Close() error {
 	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return nil
+	}
+	p.closed = true
 	slots := make([]*producerSlot, 0, len(p.producers))
 	for _, producer := range p.producers {
 		slots = append(slots, producer)
@@ -73,7 +82,9 @@ func (p *Publisher) Close() error {
 		}
 		slot.mu.Unlock()
 	}
-	p.client.Close()
+	if p.client != nil {
+		p.client.Close()
+	}
 	return nil
 }
 
@@ -96,7 +107,10 @@ func (p *Publisher) Ready(ctx context.Context, topics []string) error {
 }
 
 func (p *Publisher) producer(topic string) (pulsar.Producer, error) {
-	slot := p.producerSlot(topic)
+	slot, err := p.producerSlot(topic)
+	if err != nil {
+		return nil, err
+	}
 	slot.mu.Lock()
 	defer slot.mu.Unlock()
 
@@ -111,16 +125,22 @@ func (p *Publisher) producer(topic string) (pulsar.Producer, error) {
 	return producer, nil
 }
 
-func (p *Publisher) producerSlot(topic string) *producerSlot {
+func (p *Publisher) producerSlot(topic string) (*producerSlot, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if p.closed {
+		return nil, ErrPublisherClosed
+	}
+	if p.producers == nil {
+		p.producers = make(map[string]*producerSlot)
+	}
 	slot, ok := p.producers[topic]
 	if !ok {
 		slot = &producerSlot{}
 		p.producers[topic] = slot
 	}
-	return slot
+	return slot, nil
 }
 
 func authToken(cfg config.PulsarConfig) (string, error) {

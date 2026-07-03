@@ -36,10 +36,26 @@ securityContext:
   readOnlyRootFilesystem: true
 
 service:
-  type: NodePort
+  type: ClusterIP
   port: 80
   targetPort: http
-  nodePort: 31523
+  nodePort: null
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: http-pulsar-router.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+networkPolicy:
+  enabled: false
+  ingress: []
+  egress: []
 
 resources:
   requests:
@@ -75,7 +91,7 @@ config:
     maxBodyBytes: 1048576
     maxBatchItems: 1000
     auth:
-      enabled: false
+      enabled: true
       bearerToken: ""
       bearerTokenFile: ""
     publishRetry:
@@ -94,9 +110,6 @@ config:
   routes:
     mss_tag_push_event_test:
       topic: "persistent://public/default/mss_tag_push_event_test"
-      auth:
-        bearerToken: ""
-        bearerTokenFile: ""
       validation:
         maxBodyBytes: 1048576
         maxBatchItems: 1000

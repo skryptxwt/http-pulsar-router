@@ -49,12 +49,31 @@ type ServerConfig struct {
 
 type AuthConfig struct {
 	Enabled bool `json:"enabled"`
+	set     bool
 	BearerTokenConfig
 }
 
 type BearerTokenConfig struct {
 	BearerToken     string `json:"bearerToken,omitempty"`
 	BearerTokenFile string `json:"bearerTokenFile,omitempty"`
+}
+
+func (a *AuthConfig) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Enabled         *bool  `json:"enabled"`
+		BearerToken     string `json:"bearerToken,omitempty"`
+		BearerTokenFile string `json:"bearerTokenFile,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	a.BearerToken = raw.BearerToken
+	a.BearerTokenFile = raw.BearerTokenFile
+	if raw.Enabled != nil {
+		a.Enabled = *raw.Enabled
+		a.set = true
+	}
+	return nil
 }
 
 type RetryConfig struct {
@@ -186,9 +205,6 @@ func (c *Config) Validate() error {
 		if strings.TrimSpace(route.Topic) == "" {
 			return fmt.Errorf("routes.%s.topic is required", dataSet)
 		}
-		if c.Server.Auth.Enabled && !authHasToken(c.Server.Auth.BearerTokenConfig) && !authHasToken(route.Auth) {
-			return fmt.Errorf("routes.%s.auth.bearerToken or bearerTokenFile is required when server auth is enabled without a global token", dataSet)
-		}
 		if route.Validation.MaxBodyBytes < 0 {
 			return fmt.Errorf("routes.%s.validation.maxBodyBytes must not be negative", dataSet)
 		}
@@ -201,6 +217,9 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
+	if c.Server.Auth.Enabled && !authHasToken(c.Server.Auth.BearerTokenConfig) {
+		return errors.New("server.auth.bearerToken or bearerTokenFile is required when server auth is enabled")
+	}
 	return nil
 }
 
@@ -209,6 +228,9 @@ func authHasToken(auth BearerTokenConfig) bool {
 }
 
 func (c *Config) applyDefaults() {
+	if !c.Server.Auth.set {
+		c.Server.Auth.Enabled = true
+	}
 	c.Server = c.Server.WithDefaults()
 	if c.Pulsar.OperationTimeout == "" {
 		c.Pulsar.OperationTimeout = defaultOperationTO

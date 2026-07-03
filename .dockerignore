@@ -1,5 +1,7 @@
 .git
 .agents
+.gocache
+.gomodcache
 bin
 dist
 coverage.out
