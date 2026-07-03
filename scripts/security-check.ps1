@@ -3,6 +3,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:GOTOOLCHAIN = "go1.26.4"
 
 function Invoke-Step {
     param(

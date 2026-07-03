@@ -1,6 +1,6 @@
 module sr-forwarder
 
-go 1.26.2
+go 1.26.4
 
 require github.com/apache/pulsar-client-go v0.15.0
 
