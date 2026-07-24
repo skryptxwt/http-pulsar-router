@@ -275,10 +275,15 @@ func TestHandleEventsRequiresBearerTokenWhenAuthEnabled(t *testing.T) {
 	}
 }
 
-func TestHandleEventsRejectsRouteBearerTokenWhenGlobalTokenMissing(t *testing.T) {
+func TestHandleEventsRouteBearerTokenOverridesGlobalToken(t *testing.T) {
 	publisher := &fakePublisher{}
 	cfg := testServerConfig()
-	cfg.Auth = config.AuthConfig{Enabled: true}
+	cfg.Auth = config.AuthConfig{
+		Enabled: true,
+		BearerTokenConfig: config.BearerTokenConfig{
+			BearerToken: "global-token",
+		},
+	}
 	handler := NewHandler(
 		staticRouteEntries{
 			"ds-a": {
@@ -307,11 +312,44 @@ func TestHandleEventsRejectsRouteBearerTokenWhenGlobalTokenMissing(t *testing.T)
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds-a","data":[{"uuId":"u1"}]}`)))
 	req.Header.Set("Authorization", "Bearer token-a")
 	handler.handleEvents(rec, req)
-	if rec.Code != http.StatusUnauthorized {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("route token status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if len(publisher.calls) != 0 {
+	if len(publisher.calls) != 1 {
 		t.Fatalf("publish calls = %d", len(publisher.calls))
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds-a","data":[{"uuId":"u2"}]}`)))
+	req.Header.Set("Authorization", "Bearer global-token")
+	handler.handleEvents(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("global token must not bypass route token: status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleEventsFallsBackToGlobalBearerToken(t *testing.T) {
+	publisher := &fakePublisher{}
+	cfg := testServerConfig()
+	cfg.Auth = config.AuthConfig{
+		Enabled: true,
+		BearerTokenConfig: config.BearerTokenConfig{
+			BearerToken: "global-token",
+		},
+	}
+	handler := NewHandler(
+		staticRouteEntries{"ds": {Topic: "topic"}},
+		publisher,
+		cfg,
+		log.New(io.Discard, "", 0),
+	)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte(`{"dataSet":"ds","data":[{"uuId":"u1"}]}`)))
+	req.Header.Set("Authorization", "Bearer global-token")
+	handler.handleEvents(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("global token status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }
 

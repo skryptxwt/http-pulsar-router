@@ -81,6 +81,10 @@ If a Pulsar publish fails after some items were accepted, the response includes 
   "routes": {
     "mss_tag_push_event_test": {
       "topic": "persistent://public/default/mss_tag_push_event_test",
+      "auth": {
+        "bearerToken": "route-specific-token",
+        "bearerTokenFile": ""
+      },
       "validation": {
         "maxBodyBytes": 1048576,
         "maxBatchItems": 1000,
@@ -95,8 +99,8 @@ If a Pulsar publish fails after some items were accepted, the response includes 
 ```
 
 The service polls the config file and reloads route, request limit, publish retry, circuit breaker, and route validation changes without restarting.
-`server.auth.enabled` defaults to `true`. When enabled, event endpoints require `Authorization: Bearer <token>` before request body parsing or route lookup. Health and metrics endpoints are not protected by this option.
-Configure `server.auth.bearerToken` or `server.auth.bearerTokenFile` globally for every dataSet. Configs with `server.auth.enabled=true` and no global token are rejected; route-level auth is not used for request authorization.
+`server.auth.enabled` defaults to `true`. When enabled, event endpoints require `Authorization: Bearer <token>`. The request is decoded only far enough to select the effective route token before authorization errors are returned; unauthorized responses do not expose route details. Health and metrics endpoints are not protected by this option.
+Configure `server.auth.bearerToken` or `server.auth.bearerTokenFile` as the global fallback for every dataSet. A route can override the global token with `routes.<dataSet>.auth.bearerToken` or `bearerTokenFile`; once overridden, the global token is not accepted for that route. When auth is enabled without a global token, every route must configure its own token.
 `server.publishRetry.maxAttempts` includes the first publish attempt. Set it to `1` to disable retries.
 `server.requestTimeout` caps one HTTP publish request before `writeTimeout` is reached. Set it to `0s` to disable this internal deadline.
 `server.readinessTimeout` caps the `/readyz` Pulsar readiness check.
@@ -192,9 +196,11 @@ config:
   routes:
     mss_tag_push_event_test:
       topic: persistent://public/default/mss_tag_push_event_test
+      auth:
+        bearerToken: "route-specific-token"
 ```
 
-The chart exposes the service as `ClusterIP` by default. Helm rendering fails when `config.server.auth.enabled=true` and no global HTTP token is configured. Enable `ingress.enabled` and set `ingress.tls` when external HTTPS ingress is required. Enable `networkPolicy.enabled` only after providing the ingress and egress rules your cluster needs.
+The chart exposes the service as `ClusterIP` by default. When `config.server.auth.enabled=true`, Helm requires either a global HTTP token or a token on every route. Enable `ingress.enabled` and set `ingress.tls` when external HTTPS ingress is required. Enable `networkPolicy.enabled` only after providing the ingress and egress rules your cluster needs.
 
 Upgrade:
 
@@ -210,7 +216,7 @@ The chart uses rolling updates with `maxUnavailable: 0` and includes `/healthz` 
 
 - `200`: all items were published to Pulsar.
 - `400`: invalid JSON or invalid request shape.
-- `401`: request authorization failed before route lookup when `server.auth.enabled=true`; the response does not include route details.
+- `401`: request authorization failed when `server.auth.enabled=true`; the response does not include route details.
 - `413`: request body or batch item count exceeds the configured limit.
 - `422`: `dataSet` has no configured route.
 - `503`: publish to Pulsar failed; caller should retry.

@@ -42,7 +42,7 @@ When `server.auth.enabled` is `true`, include:
 Authorization: Bearer <token>
 ```
 
-`server.auth.enabled` defaults to `true`. Configure `server.auth.bearerToken` or `server.auth.bearerTokenFile` globally; per-route auth is not used for request authorization.
+`server.auth.enabled` defaults to `true`. Configure `server.auth.bearerToken` or `server.auth.bearerTokenFile` as the global fallback. A route can override it with `routes.<dataSet>.auth.bearerToken` or `bearerTokenFile`; when a route override exists, the global token is not accepted for that route. If no global token is configured, every route must define its own token.
 
 ```json
 {

@@ -218,7 +218,11 @@ func (c *Config) Validate() error {
 		}
 	}
 	if c.Server.Auth.Enabled && !authHasToken(c.Server.Auth.BearerTokenConfig) {
-		return errors.New("server.auth.bearerToken or bearerTokenFile is required when server auth is enabled")
+		for dataSet, route := range c.Routes {
+			if !authHasToken(route.Auth) {
+				return fmt.Errorf("routes.%s.auth.bearerToken or bearerTokenFile is required when server auth is enabled and no global token is configured", dataSet)
+			}
+		}
 	}
 	return nil
 }

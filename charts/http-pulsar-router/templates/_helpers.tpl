@@ -44,7 +44,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- $server := default dict $config.server -}}
 {{- $auth := default dict $server.auth -}}
 {{- if and (default false $auth.enabled) (empty $auth.bearerToken) (empty $auth.bearerTokenFile) -}}
-{{- fail "config.server.auth.bearerToken or bearerTokenFile is required when config.server.auth.enabled=true" -}}
+{{- range $dataSet, $route := default dict $config.routes -}}
+{{- $routeAuth := default dict $route.auth -}}
+{{- if and (empty $routeAuth.bearerToken) (empty $routeAuth.bearerTokenFile) -}}
+{{- fail (printf "config.routes.%s.auth.bearerToken or bearerTokenFile is required when server auth is enabled and no global token is configured" $dataSet) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- if and .Values.pulsarAuth.enabled (empty $config.pulsar.authTokenFile) -}}
 {{- $_ := set $config.pulsar "authTokenFile" (printf "%s/token" (trimSuffix "/" .Values.pulsarAuth.mountPath)) -}}

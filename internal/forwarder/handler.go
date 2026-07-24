@@ -118,32 +118,44 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 	}
 
-	if !h.authorized(r, cfg.Auth) {
+	req, bodyBytes, decodeErr := decodeEventRequest(w, r, cfg.MaxBodyBytes)
+	if req != nil {
+		req.DataSet = strings.TrimSpace(req.DataSet)
+	}
+
+	var route config.RouteEntry
+	var routeFound bool
+	if decodeErr == nil && req != nil && req.DataSet != "" {
+		route, routeFound = h.lookupRoute(req.DataSet)
+	}
+
+	tokenAuth := cfg.Auth.BearerTokenConfig
+	if routeFound && authHasToken(route.Auth) {
+		tokenAuth = route.Auth
+	}
+	if !h.authorized(r, cfg.Auth.Enabled, tokenAuth) {
 		h.logger.Printf("request rejected reason=unauthorized remote=%s", r.RemoteAddr)
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		h.writeEventJSON(w, http.StatusUnauthorized, responseBody{OK: false, Error: "unauthorized"}, unknownDataSetLabel, "unauthorized")
 		return
 	}
 
-	req, bodyBytes, err := decodeEventRequest(w, r, cfg.MaxBodyBytes)
-	if err != nil {
+	if decodeErr != nil {
 		status := http.StatusBadRequest
 		reason := "invalid_json"
-		if errors.Is(err, errBodyTooLarge) {
+		if errors.Is(decodeErr, errBodyTooLarge) {
 			status = http.StatusRequestEntityTooLarge
 			reason = "body_too_large"
 		}
-		h.writeEventJSON(w, status, responseBody{OK: false, Error: err.Error()}, "", reason)
+		h.writeEventJSON(w, status, responseBody{OK: false, Error: decodeErr.Error()}, "", reason)
 		return
 	}
 
-	req.DataSet = strings.TrimSpace(req.DataSet)
 	if req.DataSet == "" {
 		h.writeEventJSON(w, http.StatusBadRequest, responseBody{OK: false, Error: "dataSet is required"}, "", "missing_data_set")
 		return
 	}
-	route, ok := h.lookupRoute(req.DataSet)
-	if !ok {
+	if !routeFound {
 		h.logger.Printf("request rejected dataSet=%s reason=route_not_found", req.DataSet)
 		h.writeEventJSON(w, http.StatusUnprocessableEntity, responseBody{OK: false, Error: "dataSet route not found", DataSet: req.DataSet}, unknownDataSetLabel, "route_not_found")
 		return
@@ -247,12 +259,11 @@ func (h *Handler) topics() []string {
 	return nil
 }
 
-func (h *Handler) authorized(r *http.Request, globalAuth config.AuthConfig) bool {
-	if !globalAuth.Enabled {
+func (h *Handler) authorized(r *http.Request, enabled bool, tokenAuth config.BearerTokenConfig) bool {
+	if !enabled {
 		return true
 	}
 
-	tokenAuth := globalAuth.BearerTokenConfig
 	expected, err := bearerToken(tokenAuth)
 	if err != nil {
 		h.logger.Printf("auth token load failed err=%v", err)
@@ -270,6 +281,10 @@ func (h *Handler) authorized(r *http.Request, globalAuth config.AuthConfig) bool
 
 	actualToken := strings.TrimSpace(actual[len(prefix):])
 	return subtle.ConstantTimeCompare([]byte(actualToken), []byte(expected)) == 1
+}
+
+func authHasToken(cfg config.BearerTokenConfig) bool {
+	return strings.TrimSpace(cfg.BearerToken) != "" || strings.TrimSpace(cfg.BearerTokenFile) != ""
 }
 
 func bearerToken(cfg config.BearerTokenConfig) (string, error) {

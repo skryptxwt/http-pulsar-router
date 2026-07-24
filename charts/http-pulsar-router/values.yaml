@@ -110,6 +110,9 @@ config:
   routes:
     mss_tag_push_event_test:
       topic: "persistent://public/default/mss_tag_push_event_test"
+      auth:
+        bearerToken: ""
+        bearerTokenFile: ""
       validation:
         maxBodyBytes: 1048576
         maxBatchItems: 1000

@@ -97,7 +97,7 @@ func TestLoadRejectsEnabledAuthWithoutToken(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsEnabledAuthWithOnlyRouteToken(t *testing.T) {
+func TestLoadAllowsEnabledAuthWhenEveryRouteHasToken(t *testing.T) {
 	path := writeConfig(t, `{
 		"server": {"auth": {"enabled": true}},
 		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
@@ -109,8 +109,26 @@ func TestLoadRejectsEnabledAuthWithOnlyRouteToken(t *testing.T) {
 		}
 	}`)
 
+	if _, err := Load(path); err != nil {
+		t.Fatalf("expected route token to satisfy enabled auth: %v", err)
+	}
+}
+
+func TestLoadRejectsEnabledAuthWhenRouteHasNoEffectiveToken(t *testing.T) {
+	path := writeConfig(t, `{
+		"server": {"auth": {"enabled": true}},
+		"pulsar": {"url":"pulsar://127.0.0.1:6650"},
+		"routes": {
+			"protected": {
+				"topic":"persistent://public/default/protected",
+				"auth": {"bearerToken": "route-token"}
+			},
+			"missing": {"topic":"persistent://public/default/missing"}
+		}
+	}`)
+
 	if _, err := Load(path); err == nil {
-		t.Fatal("expected enabled auth with only route token to fail")
+		t.Fatal("expected route without an effective token to fail")
 	}
 }
 
