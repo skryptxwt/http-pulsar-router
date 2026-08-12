@@ -55,6 +55,7 @@ If a Pulsar publish fails after some items were accepted, the response includes 
     "shutdownTimeout": "15s",
     "requestTimeout": "9s",
     "readinessTimeout": "2s",
+    "pulsarFailureLivenessThreshold": "5m",
     "maxBodyBytes": 1048576,
     "maxBatchItems": 1000,
     "auth": {
@@ -104,6 +105,7 @@ Configure `server.auth.bearerToken` or `server.auth.bearerTokenFile` as the glob
 `server.publishRetry.maxAttempts` includes the first publish attempt. Set it to `1` to disable retries.
 `server.requestTimeout` caps one HTTP publish request before `writeTimeout` is reached. Set it to `0s` to disable this internal deadline.
 `server.readinessTimeout` caps the `/readyz` Pulsar readiness check.
+`server.pulsarFailureLivenessThreshold` controls when an uninterrupted Pulsar failure also fails `/healthz`; it defaults to `5m`, and `0s` disables Pulsar-driven liveness failures. Readiness failures still remove the pod from Service endpoints immediately.
 `server.circuitBreaker` opens per topic after consecutive final publish failures and fails fast with `503` for `openDuration`.
 Route `validation` is optional. If a dataSet does not configure it, no per-dataSet body, batch, or required-field validation is applied.
 
@@ -210,7 +212,7 @@ helm upgrade --install http-pulsar-router ./charts/http-pulsar-router \
   -f values-prod.yaml
 ```
 
-The chart uses rolling updates with `maxUnavailable: 0` and includes `/healthz` and `/readyz` probes.
+The chart uses rolling updates with `maxUnavailable: 0` and includes configurable startup, `/healthz` liveness, and `/readyz` readiness probes. Readiness performs a Pulsar topic metadata lookup. A failed publish or readiness lookup evicts the cached producer so a later retry creates a fresh one; the Pulsar client continues to handle connection reconnection internally.
 
 ## Status Codes
 

@@ -6,6 +6,7 @@
     "shutdownTimeout": "15s",
     "requestTimeout": "9s",
     "readinessTimeout": "2s",
+    "pulsarFailureLivenessThreshold": "5m",
     "maxBodyBytes": 1048576,
     "maxBatchItems": 1000,
     "auth": {

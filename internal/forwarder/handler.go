@@ -12,18 +12,22 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"sr-forwarder/internal/config"
 )
 
 type Handler struct {
-	routes    RouteLookup
-	publisher Publisher
-	cfg       config.ServerConfig
-	logger    *log.Logger
-	metrics   *Metrics
-	breaker   *CircuitBreaker
+	routes         RouteLookup
+	publisher      Publisher
+	cfg            config.ServerConfig
+	logger         *log.Logger
+	metrics        *Metrics
+	breaker        *CircuitBreaker
+	healthMu       sync.Mutex
+	pulsarFailures map[string]time.Time
+	now            func() time.Time
 }
 
 type eventRequest struct {
@@ -55,12 +59,14 @@ func NewHandler(routes RouteLookup, publisher Publisher, cfg config.ServerConfig
 	}
 	cfg = cfg.WithDefaults()
 	return &Handler{
-		routes:    routes,
-		publisher: publisher,
-		cfg:       cfg,
-		logger:    logger,
-		metrics:   NewMetrics(),
-		breaker:   NewCircuitBreaker(),
+		routes:         routes,
+		publisher:      publisher,
+		cfg:            cfg,
+		logger:         logger,
+		metrics:        NewMetrics(),
+		breaker:        NewCircuitBreaker(),
+		pulsarFailures: make(map[string]time.Time),
+		now:            time.Now,
 	}
 }
 
@@ -73,6 +79,13 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
+	threshold := h.serverConfig().PulsarFailureLivenessThresholdDuration()
+	if threshold > 0 {
+		if since, failed := h.oldestPulsarFailure(); failed && h.now().Sub(since) >= threshold {
+			writeJSON(w, http.StatusServiceUnavailable, responseBody{OK: false, Error: "persistent pulsar failure"})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, responseBody{OK: true})
 }
 
@@ -84,16 +97,19 @@ func (h *Handler) handleReady(w http.ResponseWriter, r *http.Request) {
 	topics := h.topics()
 	if len(topics) > 0 {
 		if err := h.publisher.Ready(ctx, topics); err != nil {
+			h.recordPulsarFailure("readiness")
 			h.logger.Printf("readiness failed err=%v", err)
 			writeJSON(w, http.StatusServiceUnavailable, responseBody{OK: false, Error: "pulsar not ready"})
 			return
 		}
 		for _, topic := range topics {
 			if h.breaker.IsOpen(topic, cfg.CircuitBreaker, time.Now()) {
+				h.recordPulsarFailure(topic)
 				writeJSON(w, http.StatusServiceUnavailable, responseBody{OK: false, Error: "publish circuit open", Topic: topic})
 				return
 			}
 		}
+		h.clearAllPulsarFailures()
 	}
 	writeJSON(w, http.StatusOK, responseBody{OK: true})
 }
@@ -211,6 +227,7 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		if err := h.publishWithRetry(ctx, cfg.PublishRetry, req.DataSet, topic, meta, item, props); err != nil {
 			opened := false
 			if !isContextDone(err) {
+				h.recordPulsarFailure(topic)
 				opened = h.breaker.RecordFailure(topic, cfg.CircuitBreaker, time.Now())
 			}
 			if opened {
@@ -229,6 +246,7 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 			}, req.DataSet, "publish_failed")
 			return
 		}
+		h.clearPulsarFailure(topic)
 		h.breaker.RecordSuccess(topic, cfg.CircuitBreaker)
 		h.metrics.SetGauge("sr_forwarder_publish_circuit_open", publishLabels(req.DataSet, topic), 0)
 		h.metrics.Inc("sr_forwarder_publish_success_total", publishLabels(req.DataSet, topic))
@@ -243,6 +261,38 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		DataSet:  req.DataSet,
 		Topic:    topic,
 	}, req.DataSet, "")
+}
+
+func (h *Handler) recordPulsarFailure(key string) {
+	h.healthMu.Lock()
+	defer h.healthMu.Unlock()
+	if _, exists := h.pulsarFailures[key]; !exists {
+		h.pulsarFailures[key] = h.now()
+	}
+}
+
+func (h *Handler) clearPulsarFailure(key string) {
+	h.healthMu.Lock()
+	defer h.healthMu.Unlock()
+	delete(h.pulsarFailures, key)
+}
+
+func (h *Handler) clearAllPulsarFailures() {
+	h.healthMu.Lock()
+	defer h.healthMu.Unlock()
+	clear(h.pulsarFailures)
+}
+
+func (h *Handler) oldestPulsarFailure() (time.Time, bool) {
+	h.healthMu.Lock()
+	defer h.healthMu.Unlock()
+	var oldest time.Time
+	for _, since := range h.pulsarFailures {
+		if oldest.IsZero() || since.Before(oldest) {
+			oldest = since
+		}
+	}
+	return oldest, !oldest.IsZero()
 }
 
 func (h *Handler) serverConfig() config.ServerConfig {

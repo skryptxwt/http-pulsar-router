@@ -10,21 +10,22 @@ import (
 )
 
 const (
-	defaultAddr            = ":8080"
-	defaultReadTimeout     = "5s"
-	defaultWriteTimeout    = "10s"
-	defaultShutdownTimeout = "15s"
-	defaultRequestTimeout  = "9s"
-	defaultReadinessTO     = "2s"
-	defaultOperationTO     = "5s"
-	defaultConnectionTO    = "5s"
-	defaultMaxBodyBytes    = int64(1 << 20)
-	defaultMaxBatchItems   = 1000
-	defaultRetryAttempts   = 3
-	defaultInitialBackoff  = "100ms"
-	defaultMaxBackoff      = "2s"
-	defaultCBThreshold     = 20
-	defaultCBOpenDuration  = "10s"
+	defaultAddr                           = ":8080"
+	defaultReadTimeout                    = "5s"
+	defaultWriteTimeout                   = "10s"
+	defaultShutdownTimeout                = "15s"
+	defaultRequestTimeout                 = "9s"
+	defaultReadinessTO                    = "2s"
+	defaultPulsarFailureLivenessThreshold = "5m"
+	defaultOperationTO                    = "5s"
+	defaultConnectionTO                   = "5s"
+	defaultMaxBodyBytes                   = int64(1 << 20)
+	defaultMaxBatchItems                  = 1000
+	defaultRetryAttempts                  = 3
+	defaultInitialBackoff                 = "100ms"
+	defaultMaxBackoff                     = "2s"
+	defaultCBThreshold                    = 20
+	defaultCBOpenDuration                 = "10s"
 )
 
 type Config struct {
@@ -34,17 +35,18 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Addr             string               `json:"addr"`
-	ReadTimeout      string               `json:"readTimeout"`
-	WriteTimeout     string               `json:"writeTimeout"`
-	ShutdownTimeout  string               `json:"shutdownTimeout"`
-	RequestTimeout   string               `json:"requestTimeout"`
-	ReadinessTimeout string               `json:"readinessTimeout"`
-	MaxBodyBytes     int64                `json:"maxBodyBytes"`
-	MaxBatchItems    int                  `json:"maxBatchItems"`
-	Auth             AuthConfig           `json:"auth"`
-	PublishRetry     RetryConfig          `json:"publishRetry"`
-	CircuitBreaker   CircuitBreakerConfig `json:"circuitBreaker"`
+	Addr                           string               `json:"addr"`
+	ReadTimeout                    string               `json:"readTimeout"`
+	WriteTimeout                   string               `json:"writeTimeout"`
+	ShutdownTimeout                string               `json:"shutdownTimeout"`
+	RequestTimeout                 string               `json:"requestTimeout"`
+	ReadinessTimeout               string               `json:"readinessTimeout"`
+	PulsarFailureLivenessThreshold string               `json:"pulsarFailureLivenessThreshold"`
+	MaxBodyBytes                   int64                `json:"maxBodyBytes"`
+	MaxBatchItems                  int                  `json:"maxBatchItems"`
+	Auth                           AuthConfig           `json:"auth"`
+	PublishRetry                   RetryConfig          `json:"publishRetry"`
+	CircuitBreaker                 CircuitBreakerConfig `json:"circuitBreaker"`
 }
 
 type AuthConfig struct {
@@ -156,6 +158,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("server.readinessTimeout: %w", err)
 	} else if readinessTimeout <= 0 {
 		return errors.New("server.readinessTimeout must be positive")
+	}
+	if threshold, err := time.ParseDuration(c.Server.PulsarFailureLivenessThreshold); err != nil {
+		return fmt.Errorf("server.pulsarFailureLivenessThreshold: %w", err)
+	} else if threshold < 0 {
+		return errors.New("server.pulsarFailureLivenessThreshold must not be negative")
 	}
 	initialBackoff, err := time.ParseDuration(c.Server.PublishRetry.InitialBackoff)
 	if err != nil {
@@ -269,6 +276,9 @@ func (s ServerConfig) WithDefaults() ServerConfig {
 	if s.ReadinessTimeout == "" {
 		s.ReadinessTimeout = defaultReadinessTO
 	}
+	if s.PulsarFailureLivenessThreshold == "" {
+		s.PulsarFailureLivenessThreshold = defaultPulsarFailureLivenessThreshold
+	}
 	if s.MaxBodyBytes == 0 {
 		s.MaxBodyBytes = defaultMaxBodyBytes
 	}
@@ -332,6 +342,11 @@ func (s ServerConfig) RequestTimeoutDuration() time.Duration {
 
 func (s ServerConfig) ReadinessTimeoutDuration() time.Duration {
 	d, _ := time.ParseDuration(s.ReadinessTimeout)
+	return d
+}
+
+func (s ServerConfig) PulsarFailureLivenessThresholdDuration() time.Duration {
+	d, _ := time.ParseDuration(s.PulsarFailureLivenessThreshold)
 	return d
 }
 

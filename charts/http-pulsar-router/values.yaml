@@ -71,6 +71,29 @@ affinity: {}
 
 terminationGracePeriodSeconds: 30
 
+probes:
+  startup:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 2
+    timeoutSeconds: 1
+    failureThreshold: 30
+    successThreshold: 1
+  liveness:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+    successThreshold: 1
+  readiness:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 2
+    successThreshold: 1
+
 pulsarAuth:
   enabled: false
   create: false
@@ -88,6 +111,7 @@ config:
     shutdownTimeout: "15s"
     requestTimeout: "9s"
     readinessTimeout: "2s"
+    pulsarFailureLivenessThreshold: "5m"
     maxBodyBytes: 1048576
     maxBatchItems: 1000
     auth:

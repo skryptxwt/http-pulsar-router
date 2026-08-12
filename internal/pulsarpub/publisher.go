@@ -15,10 +15,16 @@ import (
 var ErrPublisherClosed = errors.New("publisher is closed")
 
 type Publisher struct {
-	client    pulsar.Client
+	client    pulsarClient
 	mu        sync.Mutex
 	closed    bool
 	producers map[string]*producerSlot
+}
+
+type pulsarClient interface {
+	CreateProducer(pulsar.ProducerOptions) (pulsar.Producer, error)
+	TopicPartitions(string) ([]string, error)
+	Close()
 }
 
 type producerSlot struct {
@@ -59,6 +65,9 @@ func (p *Publisher) Publish(ctx context.Context, topic string, key string, paylo
 		Payload:    payload,
 		Properties: properties,
 	})
+	if err != nil {
+		p.invalidateProducer(topic, producer)
+	}
 	return err
 }
 
@@ -95,15 +104,45 @@ func (p *Publisher) Ready(ctx context.Context, topics []string) error {
 			continue
 		}
 		seen[topic] = struct{}{}
-		producer, err := p.producer(topic)
-		if err != nil {
-			return err
-		}
-		if err := producer.FlushWithCtx(ctx); err != nil {
+		if err := p.lookupTopic(ctx, topic); err != nil {
+			p.invalidateProducer(topic, nil)
 			return err
 		}
 	}
 	return nil
+}
+
+func (p *Publisher) lookupTopic(ctx context.Context, topic string) error {
+	result := make(chan error, 1)
+	go func() {
+		_, err := p.client.TopicPartitions(topic)
+		result <- err
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-result:
+		return err
+	}
+}
+
+// invalidateProducer removes a failed producer so the next publish attempt
+// creates a fresh producer. If failed is non-nil, a concurrently replaced
+// producer is preserved.
+func (p *Publisher) invalidateProducer(topic string, failed pulsar.Producer) {
+	slot, err := p.producerSlot(topic)
+	if err != nil {
+		return
+	}
+	slot.mu.Lock()
+	if slot.producer == nil || (failed != nil && slot.producer != failed) {
+		slot.mu.Unlock()
+		return
+	}
+	stale := slot.producer
+	slot.producer = nil
+	slot.mu.Unlock()
+	stale.Close()
 }
 
 func (p *Publisher) producer(topic string) (pulsar.Producer, error) {

@@ -39,6 +39,9 @@ func TestLoadAppliesDefaultsAndRoutes(t *testing.T) {
 	if cfg.Server.ReadinessTimeout != defaultReadinessTO {
 		t.Fatalf("readiness timeout = %q", cfg.Server.ReadinessTimeout)
 	}
+	if cfg.Server.PulsarFailureLivenessThreshold != defaultPulsarFailureLivenessThreshold {
+		t.Fatalf("pulsar failure liveness threshold = %q", cfg.Server.PulsarFailureLivenessThreshold)
+	}
 	if cfg.Server.CircuitBreaker.Enabled {
 		t.Fatal("circuit breaker should default to disabled")
 	}

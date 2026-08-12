@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"sr-forwarder/internal/config"
 )
@@ -621,5 +622,48 @@ func TestReadyzChecksPublisher(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHealthzFailsOnlyAfterPersistentPulsarFailure(t *testing.T) {
+	base := time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC)
+	cfg := testServerConfig()
+	cfg.PulsarFailureLivenessThreshold = "5m"
+	handler := NewHandler(staticRoutes{"ds": "topic"}, &fakePublisher{}, cfg, log.New(io.Discard, "", 0))
+	handler.now = func() time.Time { return base }
+	handler.recordPulsarFailure("topic")
+
+	rec := httptest.NewRecorder()
+	handler.handleHealth(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("health before threshold = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	handler.now = func() time.Time { return base.Add(5 * time.Minute) }
+	rec = httptest.NewRecorder()
+	handler.handleHealth(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("health after threshold = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSuccessfulReadinessClearsPersistentPulsarFailure(t *testing.T) {
+	base := time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC)
+	cfg := testServerConfig()
+	cfg.PulsarFailureLivenessThreshold = "1m"
+	handler := NewHandler(staticRoutes{"ds": "topic"}, &fakePublisher{}, cfg, log.New(io.Discard, "", 0))
+	handler.now = func() time.Time { return base }
+	handler.recordPulsarFailure("topic")
+	handler.now = func() time.Time { return base.Add(2 * time.Minute) }
+
+	ready := httptest.NewRecorder()
+	handler.handleReady(ready, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if ready.Code != http.StatusOK {
+		t.Fatalf("ready = %d, body = %s", ready.Code, ready.Body.String())
+	}
+	health := httptest.NewRecorder()
+	handler.handleHealth(health, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if health.Code != http.StatusOK {
+		t.Fatalf("health after recovery = %d, body = %s", health.Code, health.Body.String())
 	}
 }

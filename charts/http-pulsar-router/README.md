@@ -15,6 +15,8 @@ When `pulsarAuth.enabled=true`, the chart automatically sets `config.pulsar.auth
 The HTTP service defaults to `ClusterIP`. `ingress.enabled`, `ingress.tls`, and `networkPolicy.enabled` are off by default.
 `config.server.auth.enabled` defaults to `true`. The server token is the global fallback. A route-level token overrides it for that route; if no global token is configured, every route must define a token.
 
+The chart enables startup, liveness, and readiness probes by default. `/readyz` performs a Pulsar topic metadata lookup and removes failed cached producers so the next attempt recreates them. `/healthz` remains healthy during short Pulsar outages and fails only after `config.server.pulsarFailureLivenessThreshold` (default `5m`), allowing Kubernetes to restart a persistently stuck pod without creating a short-outage restart storm. Set the threshold to `0s` to disable Pulsar-driven liveness failures. All Kubernetes timings and thresholds are configurable under `probes`.
+
 ```yaml
 replicaCount: 3
 

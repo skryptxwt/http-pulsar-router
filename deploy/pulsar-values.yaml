@@ -16,6 +16,7 @@ pulsarAuth:
 
 config:
   server:
+    pulsarFailureLivenessThreshold: "5m"
     addr: ":8080"
     readTimeout: "5s"
     writeTimeout: "10s"
