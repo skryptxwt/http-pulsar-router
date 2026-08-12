@@ -139,7 +139,7 @@ sr_forwarder_publish_latency_seconds_count
 pwsh ./scripts/security-check.ps1
 ```
 
-The security check runs formatting, vet, unit tests, race tests, build, `govulncheck`, and Helm chart rendering. Use `pwsh ./scripts/security-check.ps1 -SkipHelm` on machines without Helm.
+The security check runs formatting, vet, unit tests, race tests, build, `govulncheck`, and Helm chart rendering. Use `pwsh ./scripts/security-check.ps1 -SkipHelm` on machines without Helm, and add `-SkipRace` only on local systems without a CGO compiler. CI must run the race tests.
 
 Run:
 
