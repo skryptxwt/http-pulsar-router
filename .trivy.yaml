@@ -1,0 +1,4 @@
+# Non-secret placeholder used only to let Trivy render the Helm chart during
+# static CI scanning. Production credentials must still be supplied at deploy time.
+helm-set-string:
+  - config.server.auth.bearerToken=trivy-ci-placeholder
